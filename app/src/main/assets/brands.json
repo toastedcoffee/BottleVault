@@ -1,0 +1,122 @@
+[
+  {
+    "id": "brand_jack_daniels",
+    "name": "Jack Daniel's",
+    "country": "United States",
+    "website": "https://www.jackdaniels.com"
+  },
+  {
+    "id": "brand_jameson",
+    "name": "Jameson",
+    "country": "Ireland",
+    "website": "https://www.jamesonwhiskey.com"
+  },
+  {
+    "id": "brand_johnnie_walker",
+    "name": "Johnnie Walker",
+    "country": "Scotland",
+    "website": "https://www.johnniewalker.com"
+  },
+  {
+    "id": "brand_glenfiddich",
+    "name": "Glenfiddich",
+    "country": "Scotland",
+    "website": "https://www.glenfiddich.com"
+  },
+  {
+    "id": "brand_macallan",
+    "name": "The Macallan",
+    "country": "Scotland",
+    "website": "https://www.themacallan.com"
+  },
+  {
+    "id": "brand_crown_royal",
+    "name": "Crown Royal",
+    "country": "Canada",
+    "website": "https://www.crownroyal.com"
+  },
+  {
+    "id": "brand_grey_goose",
+    "name": "Grey Goose",
+    "country": "France",
+    "website": "https://www.greygoose.com"
+  },
+  {
+    "id": "brand_titos",
+    "name": "Tito's",
+    "country": "United States",
+    "website": "https://www.titosvodka.com"
+  },
+  {
+    "id": "brand_belvedere",
+    "name": "Belvedere",
+    "country": "Poland",
+    "website": "https://www.belvederevodka.com"
+  },
+  {
+    "id": "brand_tanqueray",
+    "name": "Tanqueray",
+    "country": "England",
+    "website": "https://www.tanqueray.com"
+  },
+  {
+    "id": "brand_bombay_sapphire",
+    "name": "Bombay Sapphire",
+    "country": "England",
+    "website": "https://www.bombaysapphire.com"
+  },
+  {
+    "id": "brand_bacardi",
+    "name": "Bacardi",
+    "country": "Puerto Rico",
+    "website": "https://www.bacardi.com"
+  },
+  {
+    "id": "brand_captain_morgan",
+    "name": "Captain Morgan",
+    "country": "Puerto Rico",
+    "website": "https://www.captainmorgan.com"
+  },
+  {
+    "id": "brand_patron",
+    "name": "Patrón",
+    "country": "Mexico",
+    "website": "https://www.patrontequila.com"
+  },
+  {
+    "id": "brand_don_julio",
+    "name": "Don Julio",
+    "country": "Mexico",
+    "website": "https://www.donjulio.com"
+  },
+  {
+    "id": "brand_hennessy",
+    "name": "Hennessy",
+    "country": "France",
+    "website": "https://www.hennessy.com"
+  },
+  {
+    "id": "brand_remy_martin",
+    "name": "Rémy Martin",
+    "country": "France",
+    "website": "https://www.remymartin.com"
+  },
+  {
+    "id": "brand_buffalo_trace",
+    "name": "Buffalo Trace",
+    "country": "United States",
+    "website": "https://www.buffalotracedistillery.com"
+  },
+  {
+    "id": "brand_makers_mark",
+    "name": "Maker's Mark",
+    "country": "United States",
+    "website": "https://www.makersmark.com"
+  },
+  {
+    "id": "brand_woodford_reserve",
+    "name": "Woodford Reserve",
+    "country": "United States",
+    "website": "https://www.woodfordreserve.com"
+  }
+]
