@@ -92,8 +92,13 @@ export default function AddBottlePage() {
           setIsCreatingProduct(true);
         }
       },
+      onError: () => {
+        setError('Barcode lookup failed. You can fill in the product details manually.');
+        setIsCreatingProduct(true);
+      },
     });
-  }, [barcodeLookup]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
