@@ -4,8 +4,10 @@ import { useBottles, useDeleteBottle } from '../hooks/useBottles';
 import BottleCard from '../components/bottles/BottleCard';
 import BottleFilters from '../components/bottles/BottleFilters';
 import ConfirmDialog from '../components/common/ConfirmDialog';
-import LoadingSpinner from '../components/common/LoadingSpinner';
-import { Plus, Wine } from 'lucide-react';
+import SkeletonCard from '../components/common/SkeletonCard';
+import EmptyState from '../components/common/EmptyState';
+import ErrorState from '../components/common/ErrorState';
+import { Plus, Wine, Search } from 'lucide-react';
 import type { BottleStatus } from '../types/bottle';
 
 export default function InventoryPage() {
@@ -14,7 +16,7 @@ export default function InventoryPage() {
   const [type, setType] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const { data, isLoading, error } = useBottles({
+  const { data, isLoading, error, refetch } = useBottles({
     search: search || undefined,
     status: status || undefined,
     type: type || undefined,
@@ -31,9 +33,11 @@ export default function InventoryPage() {
     }
   };
 
+  const hasFilters = !!(search || status || type);
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">My Collection</h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -42,7 +46,7 @@ export default function InventoryPage() {
         </div>
         <Link
           to="/inventory/add"
-          className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 transition-colors"
+          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 transition-colors min-h-[44px]"
         >
           <Plus className="w-4 h-4" />
           Add Bottle
@@ -60,29 +64,30 @@ export default function InventoryPage() {
         />
       </div>
 
-      {isLoading && <LoadingSpinner className="py-20" />}
+      {isLoading && <SkeletonCard count={6} />}
 
       {error && (
-        <div className="text-center py-20 text-red-600">
-          Failed to load bottles. Please try again.
-        </div>
+        <ErrorState
+          message="Failed to load your collection"
+          onRetry={() => refetch()}
+        />
       )}
 
-      {data && data.content.length === 0 && (
-        <div className="text-center py-20">
-          <Wine className="w-12 h-12 text-gray-300 mx-auto" />
-          <h3 className="mt-4 text-lg font-medium text-gray-900">No bottles yet</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Start building your collection by adding your first bottle.
-          </p>
-          <Link
-            to="/inventory/add"
-            className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700"
-          >
-            <Plus className="w-4 h-4" />
-            Add Your First Bottle
-          </Link>
-        </div>
+      {data && data.content.length === 0 && !hasFilters && (
+        <EmptyState
+          icon={Wine}
+          title="No bottles yet"
+          description="Start building your collection by adding your first bottle."
+          action={{ label: "Add Your First Bottle", to: "/inventory/add" }}
+        />
+      )}
+
+      {data && data.content.length === 0 && hasFilters && (
+        <EmptyState
+          icon={Search}
+          title="No results found"
+          description="Try adjusting your search or filters."
+        />
       )}
 
       {data && data.content.length > 0 && (

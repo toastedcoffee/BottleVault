@@ -7,7 +7,9 @@ import InventoryPage from './pages/InventoryPage';
 import AddBottlePage from './pages/AddBottlePage';
 import EditBottlePage from './pages/EditBottlePage';
 import BottleDetailPage from './pages/BottleDetailPage';
+import SettingsPage from './pages/SettingsPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,6 +49,7 @@ function AppRoutes() {
         <Route path="/inventory/add" element={<AddBottlePage />} />
         <Route path="/inventory/:id" element={<BottleDetailPage />} />
         <Route path="/inventory/:id/edit" element={<EditBottlePage />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/inventory" replace />} />
     </Routes>
@@ -58,7 +61,9 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <BrowserRouter>
-          <AppRoutes />
+          <ErrorBoundary>
+            <AppRoutes />
+          </ErrorBoundary>
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>
