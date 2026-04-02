@@ -36,14 +36,14 @@ export default function BottleFilters({
           placeholder="Search bottles..."
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          className="w-full pl-9 pr-4 py-2 min-h-[44px] border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
         />
       </div>
 
       <select
         value={status}
         onChange={(e) => onStatusChange(e.target.value as BottleStatus | '')}
-        className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500"
+        className="px-3 py-2 min-h-[44px] border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500"
       >
         {STATUSES.map((s) => (
           <option key={s.value} value={s.value}>{s.label}</option>
@@ -53,7 +53,7 @@ export default function BottleFilters({
       <select
         value={type}
         onChange={(e) => onTypeChange(e.target.value)}
-        className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500"
+        className="px-3 py-2 min-h-[44px] border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500"
       >
         <option value="">All Types</option>
         {TYPES.filter(Boolean).map((t) => (
