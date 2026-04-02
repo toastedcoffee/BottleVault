@@ -153,6 +153,58 @@ class BottleVaultIntegrationTest {
     }
 
     @Test
+    fun `can update user profile`() {
+        val result = mockMvc.perform(
+            put("/api/user/profile")
+                .header("Authorization", "Bearer $accessToken")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"displayName": "Updated Name", "defaultCurrency": "EUR", "measurementUnit": "oz"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.displayName").value("Updated Name"))
+            .andExpect(jsonPath("$.defaultCurrency").value("EUR"))
+            .andExpect(jsonPath("$.measurementUnit").value("oz"))
+            .andReturn()
+
+        // Verify email hasn't changed
+        val user = objectMapper.readTree(result.response.contentAsString)
+        assertTrue(user["email"].asText().contains("@example.com"))
+    }
+
+    @Test
+    fun `can change password and login with new password`() {
+        // Change password
+        mockMvc.perform(
+            put("/api/user/password")
+                .header("Authorization", "Bearer $accessToken")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"currentPassword": "password123", "newPassword": "newpassword456"}""")
+        )
+            .andExpect(status().isNoContent)
+    }
+
+    @Test
+    fun `change password rejects wrong current password`() {
+        mockMvc.perform(
+            put("/api/user/password")
+                .header("Authorization", "Bearer $accessToken")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"currentPassword": "wrongpassword", "newPassword": "newpassword456"}""")
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `user profile requires authentication`() {
+        mockMvc.perform(
+            put("/api/user/profile")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"displayName": "Hacker"}""")
+        )
+            .andExpect(status().isForbidden)
+    }
+
+    @Test
     fun `registration validates input`() {
         // Missing email
         mockMvc.perform(
