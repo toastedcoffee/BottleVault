@@ -17,6 +17,9 @@ spring:
       enabled: true
       path: /h2-console
 
+server:
+  port: 8085
+
 app:
   jwt:
     secret: dev-secret-key-change-in-production-must-be-at-least-256-bits-long!!
