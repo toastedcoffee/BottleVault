@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import type { BottleResponse } from '../../types/bottle';
-import StatusBadge from './StatusBadge';
+import StatusDropdown from './StatusDropdown';
 import { Star, MapPin, DollarSign } from 'lucide-react';
 
 interface BottleCardProps {
@@ -27,7 +27,7 @@ export default function BottleCard({ bottle, onDelete }: BottleCardProps) {
               {product.name}
             </h3>
           </div>
-          <StatusBadge status={bottle.status} />
+          <StatusDropdown bottleId={bottle.id} currentStatus={bottle.status} />
         </div>
 
         <div className="flex items-center gap-3 mt-3 text-xs text-gray-500">
@@ -64,13 +64,13 @@ export default function BottleCard({ bottle, onDelete }: BottleCardProps) {
         </div>
       </div>
 
-      <div className="border-t border-gray-100 px-4 py-2 flex justify-between items-center">
+      <div className="border-t border-gray-100 px-4 py-1 flex justify-between items-center">
         <button
           onClick={(e) => {
             e.stopPropagation();
             navigate(`/inventory/${bottle.id}/edit`);
           }}
-          className="text-xs text-primary-600 hover:text-primary-800 font-medium"
+          className="text-xs text-primary-600 hover:text-primary-800 font-medium min-h-[44px] px-2 flex items-center"
         >
           Edit
         </button>
@@ -79,7 +79,7 @@ export default function BottleCard({ bottle, onDelete }: BottleCardProps) {
             e.stopPropagation();
             onDelete(bottle.id);
           }}
-          className="text-xs text-red-500 hover:text-red-700 font-medium"
+          className="text-xs text-red-500 hover:text-red-700 font-medium min-h-[44px] px-2 flex items-center"
         >
           Delete
         </button>
