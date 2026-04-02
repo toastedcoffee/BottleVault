@@ -2,9 +2,14 @@ package com.bottlevault.auth
 
 import com.bottlevault.auth.dto.*
 import com.bottlevault.common.exception.ResourceAlreadyExistsException
+import com.bottlevault.common.exception.ResourceNotFoundException
+import com.bottlevault.user.dto.ChangePasswordRequest
+import com.bottlevault.user.dto.UpdateProfileRequest
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
+import java.time.Instant
+import java.util.UUID
 
 @Service
 class AuthService(
@@ -54,6 +59,38 @@ class AuthService(
             .orElseThrow { IllegalArgumentException("User not found") }
 
         return createAuthResponse(user)
+    }
+
+    fun updateProfile(userId: UUID, request: UpdateProfileRequest): UserResponse {
+        val user = userRepository.findById(userId)
+            .orElseThrow { ResourceNotFoundException("User not found") }
+
+        request.displayName?.let { user.displayName = it }
+        request.defaultCurrency?.let { user.defaultCurrency = it }
+        request.measurementUnit?.let { user.measurementUnit = it }
+        user.updatedAt = Instant.now()
+
+        val saved = userRepository.save(user)
+        return UserResponse(
+            id = saved.id.toString(),
+            email = saved.email,
+            displayName = saved.displayName,
+            defaultCurrency = saved.defaultCurrency,
+            measurementUnit = saved.measurementUnit
+        )
+    }
+
+    fun changePassword(userId: UUID, request: ChangePasswordRequest) {
+        val user = userRepository.findById(userId)
+            .orElseThrow { ResourceNotFoundException("User not found") }
+
+        if (!passwordEncoder.matches(request.currentPassword, user.passwordHash)) {
+            throw IllegalArgumentException("Current password is incorrect")
+        }
+
+        user.passwordHash = passwordEncoder.encode(request.newPassword)
+        user.updatedAt = Instant.now()
+        userRepository.save(user)
     }
 
     private fun createAuthResponse(user: User): AuthResponse {
