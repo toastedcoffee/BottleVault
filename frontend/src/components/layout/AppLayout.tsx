@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { Wine, LogOut, Plus, Menu, X, Settings } from 'lucide-react';
+import { Wine, LogOut, Plus, Menu, X, Settings, BarChart3 } from 'lucide-react';
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
@@ -14,6 +14,7 @@ export default function AppLayout() {
 
   const navLinks = [
     { to: '/inventory', label: 'Inventory', icon: Wine },
+    { to: '/statistics', label: 'Statistics', icon: BarChart3 },
     { to: '/inventory/add', label: 'Add Bottle', icon: Plus },
     { to: '/settings', label: 'Settings', icon: Settings },
   ];
