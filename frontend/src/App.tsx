@@ -8,6 +8,7 @@ import AddBottlePage from './pages/AddBottlePage';
 import EditBottlePage from './pages/EditBottlePage';
 import BottleDetailPage from './pages/BottleDetailPage';
 import SettingsPage from './pages/SettingsPage';
+import StatisticsPage from './pages/StatisticsPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import ErrorBoundary from './components/common/ErrorBoundary';
 
@@ -49,6 +50,7 @@ function AppRoutes() {
         <Route path="/inventory/add" element={<AddBottlePage />} />
         <Route path="/inventory/:id" element={<BottleDetailPage />} />
         <Route path="/inventory/:id/edit" element={<EditBottlePage />} />
+        <Route path="/statistics" element={<StatisticsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/inventory" replace />} />
