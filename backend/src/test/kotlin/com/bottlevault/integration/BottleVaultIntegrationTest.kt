@@ -205,6 +205,80 @@ class BottleVaultIntegrationTest {
     }
 
     @Test
+    fun `statistics returns empty collection data`() {
+        mockMvc.perform(
+            get("/api/statistics")
+                .header("Authorization", "Bearer $accessToken")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.totalBottles").value(0))
+            .andExpect(jsonPath("$.totalValue").value(0))
+            .andExpect(jsonPath("$.averageRating").doesNotExist())
+            .andExpect(jsonPath("$.percentageOpened").value(0.0))
+            .andExpect(jsonPath("$.statusBreakdown").isArray)
+            .andExpect(jsonPath("$.typeDistribution").isArray)
+            .andExpect(jsonPath("$.spendingOverTime").isArray)
+            .andExpect(jsonPath("$.topRatedBottles").isArray)
+            .andExpect(jsonPath("$.recentAdditions").isArray)
+    }
+
+    @Test
+    fun `statistics reflects added bottles`() {
+        // Get a product
+        val productsResult = mockMvc.perform(get("/api/products").param("search", "Old No. 7"))
+            .andExpect(status().isOk)
+            .andReturn()
+        val productId = objectMapper.readTree(productsResult.response.contentAsString)[0]["id"].asText()
+
+        // Create two bottles with different data
+        mockMvc.perform(
+            post("/api/bottles")
+                .header("Authorization", "Bearer $accessToken")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(BottleCreateRequest(
+                    productId = productId,
+                    purchaseCost = java.math.BigDecimal("29.99"),
+                    rating = 4,
+                    notes = "First bottle"
+                )))
+        ).andExpect(status().isCreated)
+
+        mockMvc.perform(
+            post("/api/bottles")
+                .header("Authorization", "Bearer $accessToken")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(BottleCreateRequest(
+                    productId = productId,
+                    purchaseCost = java.math.BigDecimal("35.00"),
+                    rating = 5,
+                    notes = "Second bottle"
+                )))
+        ).andExpect(status().isCreated)
+
+        // Check statistics
+        mockMvc.perform(
+            get("/api/statistics")
+                .header("Authorization", "Bearer $accessToken")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.totalBottles").value(2))
+            .andExpect(jsonPath("$.totalValue").value(64.99))
+            .andExpect(jsonPath("$.averageRating").value(4.5))
+            .andExpect(jsonPath("$.percentageOpened").value(0.0))
+            .andExpect(jsonPath("$.topRatedBottles.length()").value(2))
+            .andExpect(jsonPath("$.recentAdditions.length()").value(2))
+            .andExpect(jsonPath("$.statusBreakdown.length()").value(1))
+            .andExpect(jsonPath("$.statusBreakdown[0].status").value("UNOPENED"))
+            .andExpect(jsonPath("$.statusBreakdown[0].count").value(2))
+    }
+
+    @Test
+    fun `statistics requires authentication`() {
+        mockMvc.perform(get("/api/statistics"))
+            .andExpect(status().isForbidden)
+    }
+
+    @Test
     fun `registration validates input`() {
         // Missing email
         mockMvc.perform(
