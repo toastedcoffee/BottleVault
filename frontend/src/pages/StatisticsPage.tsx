@@ -3,7 +3,7 @@ import { useStatistics } from '../hooks/useStatistics';
 import SkeletonCard from '../components/common/SkeletonCard';
 import EmptyState from '../components/common/EmptyState';
 import ErrorState from '../components/common/ErrorState';
-import { Wine, DollarSign, Star, TrendingUp, Clock } from 'lucide-react';
+import { Wine, DollarSign, Star, TrendingUp, Clock, Calculator } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -82,7 +82,7 @@ export default function StatisticsPage() {
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Statistics</h1>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         <SummaryCard
           icon={<Wine className="w-5 h-5 text-primary-600" />}
           label="Total Bottles"
@@ -92,6 +92,11 @@ export default function StatisticsPage() {
           icon={<DollarSign className="w-5 h-5 text-green-600" />}
           label="Collection Value"
           value={formatCurrency(data.totalValue)}
+        />
+        <SummaryCard
+          icon={<Calculator className="w-5 h-5 text-cyan-600" />}
+          label="Avg Cost / Bottle"
+          value={data.averageCost != null ? formatCurrency(data.averageCost) : 'N/A'}
         />
         <SummaryCard
           icon={<Star className="w-5 h-5 text-amber-500" />}

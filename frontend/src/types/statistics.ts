@@ -1,6 +1,7 @@
 export interface StatisticsResponse {
   totalBottles: number;
   totalValue: number;
+  averageCost: number | null;
   averageRating: number | null;
   percentageOpened: number;
   statusBreakdown: StatusCount[];
@@ -33,5 +34,6 @@ export interface BottleSummary {
   type: string;
   rating: number | null;
   purchaseCost: number | null;
+  purchaseDate: string | null;
   createdAt: string;
 }
