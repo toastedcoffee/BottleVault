@@ -5,6 +5,7 @@ import java.math.BigDecimal
 data class StatisticsResponse(
     val totalBottles: Long,
     val totalValue: BigDecimal,
+    val averageCost: BigDecimal?,
     val averageRating: Double?,
     val percentageOpened: Double,
     val statusBreakdown: List<StatusCount>,
@@ -37,5 +38,6 @@ data class BottleSummary(
     val type: String,
     val rating: Int?,
     val purchaseCost: BigDecimal?,
+    val purchaseDate: String?,
     val createdAt: String
 )
