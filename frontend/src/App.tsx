@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -7,9 +8,10 @@ import InventoryPage from './pages/InventoryPage';
 import AddBottlePage from './pages/AddBottlePage';
 import EditBottlePage from './pages/EditBottlePage';
 import BottleDetailPage from './pages/BottleDetailPage';
-import SettingsPage from './pages/SettingsPage';
-import StatisticsPage from './pages/StatisticsPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
+
+const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 import ErrorBoundary from './components/common/ErrorBoundary';
 
 const queryClient = new QueryClient({
@@ -50,8 +52,8 @@ function AppRoutes() {
         <Route path="/inventory/add" element={<AddBottlePage />} />
         <Route path="/inventory/:id" element={<BottleDetailPage />} />
         <Route path="/inventory/:id/edit" element={<EditBottlePage />} />
-        <Route path="/statistics" element={<StatisticsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/statistics" element={<Suspense fallback={<LoadingSpinner className="min-h-[50vh]" />}><StatisticsPage /></Suspense>} />
+        <Route path="/settings" element={<Suspense fallback={<LoadingSpinner className="min-h-[50vh]" />}><SettingsPage /></Suspense>} />
       </Route>
       <Route path="*" element={<Navigate to="/inventory" replace />} />
     </Routes>

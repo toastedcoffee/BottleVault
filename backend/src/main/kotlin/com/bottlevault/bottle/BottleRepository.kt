@@ -37,6 +37,9 @@ interface BottleRepository : JpaRepository<Bottle, UUID> {
     @Query("SELECT COALESCE(SUM(b.purchaseCost), 0) FROM Bottle b WHERE b.user.id = :userId AND b.purchaseCost IS NOT NULL")
     fun sumPurchaseCostByUserId(userId: UUID): BigDecimal
 
+    @Query("SELECT COUNT(b) FROM Bottle b WHERE b.user.id = :userId AND b.purchaseCost IS NOT NULL")
+    fun countWithPurchaseCostByUserId(userId: UUID): Long
+
     @Query("SELECT AVG(CAST(b.rating AS double)) FROM Bottle b WHERE b.user.id = :userId AND b.rating IS NOT NULL")
     fun avgRatingByUserId(userId: UUID): Double?
 
@@ -52,6 +55,6 @@ interface BottleRepository : JpaRepository<Bottle, UUID> {
     @Query("SELECT b FROM Bottle b JOIN FETCH b.product p JOIN FETCH p.brand WHERE b.user.id = :userId AND b.rating IS NOT NULL ORDER BY b.rating DESC, b.updatedAt DESC")
     fun findTopRatedByUser(userId: UUID, pageable: Pageable): List<Bottle>
 
-    @Query("SELECT b FROM Bottle b JOIN FETCH b.product p JOIN FETCH p.brand WHERE b.user.id = :userId ORDER BY b.createdAt DESC")
+    @Query("SELECT b FROM Bottle b JOIN FETCH b.product p JOIN FETCH p.brand WHERE b.user.id = :userId ORDER BY b.purchaseDate DESC NULLS LAST, b.createdAt DESC")
     fun findRecentByUser(userId: UUID, pageable: Pageable): List<Bottle>
 }
