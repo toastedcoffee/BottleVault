@@ -3,9 +3,9 @@ spring:
     name: bottlevault
 
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/bottlevault}
-    username: ${DATABASE_USERNAME:bottlevault}
-    password: ${DATABASE_PASSWORD:bottlevault}
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -30,14 +30,21 @@ server:
 
 app:
   jwt:
-    secret: ${JWT_SECRET:dev-secret-key-change-in-production-must-be-at-least-256-bits-long!!}
+    secret: ${JWT_SECRET}
     expiration-ms: 86400000      # 24 hours
     refresh-expiration-ms: 604800000  # 7 days
   registration:
     enabled: ${REGISTRATION_ENABLED:true}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
 
 springdoc:
   api-docs:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
+    enabled: ${SWAGGER_ENABLED:false}
