@@ -17,6 +17,10 @@ class StatisticsService(private val bottleRepository: BottleRepository) {
     fun getStatistics(userId: UUID): StatisticsResponse {
         val totalBottles = bottleRepository.countByUserId(userId)
         val totalValue = bottleRepository.sumPurchaseCostByUserId(userId)
+        val bottlesWithCost = bottleRepository.countWithPurchaseCostByUserId(userId)
+        val averageCost = if (bottlesWithCost > 0)
+            totalValue.divide(BigDecimal(bottlesWithCost), 2, RoundingMode.HALF_UP)
+        else null
         val averageRating = bottleRepository.avgRatingByUserId(userId)
             ?.let { BigDecimal(it).setScale(1, RoundingMode.HALF_UP).toDouble() }
 
@@ -53,6 +57,7 @@ class StatisticsService(private val bottleRepository: BottleRepository) {
         return StatisticsResponse(
             totalBottles = totalBottles,
             totalValue = totalValue,
+            averageCost = averageCost,
             averageRating = averageRating,
             percentageOpened = percentageOpened,
             statusBreakdown = statusBreakdown,
@@ -70,6 +75,7 @@ class StatisticsService(private val bottleRepository: BottleRepository) {
         type = b.product.type.name,
         rating = b.rating,
         purchaseCost = b.purchaseCost,
+        purchaseDate = b.purchaseDate?.toString(),
         createdAt = b.createdAt.toString()
     )
 }
