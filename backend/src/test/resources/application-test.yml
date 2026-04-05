@@ -22,3 +22,6 @@ app:
     refresh-expiration-ms: 86400000
   registration:
     enabled: true
+  rate-limit:
+    max-attempts: 1000
+    window-seconds: 60
