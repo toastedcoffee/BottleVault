@@ -22,8 +22,12 @@ server:
 
 app:
   jwt:
-    secret: dev-secret-key-change-in-production-must-be-at-least-256-bits-long!!
+    secret: dev-only-secret-key-not-for-production-must-be-at-least-256-bits-long!!
     expiration-ms: 86400000
     refresh-expiration-ms: 604800000
   registration:
+    enabled: true
+
+springdoc:
+  swagger-ui:
     enabled: true

@@ -1,6 +1,7 @@
 package com.bottlevault.config
 
 import com.bottlevault.auth.JwtAuthenticationFilter
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpMethod
@@ -15,7 +16,9 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Configuration
 @EnableWebSecurity
 class SecurityConfig(
-    private val jwtAuthenticationFilter: JwtAuthenticationFilter
+    private val jwtAuthenticationFilter: JwtAuthenticationFilter,
+    private val rateLimitFilter: RateLimitFilter,
+    @Value("\${springdoc.swagger-ui.enabled:false}") private val swaggerEnabled: Boolean
 ) {
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
@@ -25,12 +28,21 @@ class SecurityConfig(
             .authorizeHttpRequests { auth ->
                 auth
                     .requestMatchers("/api/auth/**").permitAll()
-                    .requestMatchers("/swagger-ui/**", "/api-docs/**", "/swagger-ui.html").permitAll()
                     .requestMatchers("/actuator/health").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/brands/**", "/api/products/**").permitAll()
+
+                // Only allow Swagger access when explicitly enabled
+                if (swaggerEnabled) {
+                    auth.requestMatchers("/swagger-ui/**", "/api-docs/**", "/swagger-ui.html").permitAll()
+                } else {
+                    auth.requestMatchers("/swagger-ui/**", "/api-docs/**", "/swagger-ui.html").denyAll()
+                }
+
+                auth
                     .requestMatchers("/api/**").authenticated()
-                    .anyRequest().permitAll()
+                    .anyRequest().denyAll()
             }
+            .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
 
         return http.build()
