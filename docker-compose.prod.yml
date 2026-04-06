@@ -1,0 +1,61 @@
+# BottleVault Production Compose — for Dockge / TrueNAS / home servers.
+# Uses pre-built images from GitHub Container Registry (no source code needed).
+#
+# Dockge: Create a stack called "bottlevault" and paste this in.
+# CLI:    docker compose -f docker-compose.prod.yml up -d
+#
+# Required environment variables (set in Dockge UI or .env file):
+#   DB_PASSWORD    — database password
+#   JWT_SECRET     — JWT signing key (generate with: openssl rand -base64 48)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bottlevault-db
+    environment:
+      POSTGRES_DB: bottlevault
+      POSTGRES_USER: bottlevault
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bottlevault"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/toastedcoffee/bottlevault-api:latest
+    container_name: bottlevault-api
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/bottlevault
+      DATABASE_USERNAME: bottlevault
+      DATABASE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/toastedcoffee/bottlevault-web:latest
+    container_name: bottlevault-web
+    ports:
+      - "${PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

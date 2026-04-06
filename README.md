@@ -61,7 +61,26 @@ npm run dev
 
 The Vite dev server proxies `/api` requests to `localhost:8080`.
 
-### LAN Deployment (e.g. TrueNAS / home server)
+### LAN Deployment with Dockge (TrueNAS SCALE / home server)
+
+Pre-built images are published to GitHub Container Registry on every merge to main. No git clone needed on your server.
+
+1. **Create the stack** in Dockge — name it `bottlevault`
+2. **Paste** the contents of [`docker-compose.prod.yml`](docker-compose.prod.yml) into the compose editor
+3. **Set environment variables** in Dockge's UI:
+   - `DB_PASSWORD` — any strong password
+   - `JWT_SECRET` — generate with `openssl rand -base64 48`
+   - `REGISTRATION_ENABLED` — `true` (change to `false` after creating your account)
+   - `PORT` — (optional, default `80`)
+4. **Create the data directory** from TrueNAS shell:
+   ```bash
+   mkdir -p /mnt/AppPool/configs/stacks/bottlevault/data/postgres
+   ```
+5. **Deploy** the stack from Dockge
+6. **Register** your account at `http://<server-ip>`
+7. **Lock down** — set `REGISTRATION_ENABLED=false` in Dockge and redeploy
+
+### LAN Deployment with CLI
 
 ```bash
 # On your server, clone and configure
@@ -96,17 +115,18 @@ Access the app from any device on your network at `http://<server-ip>`.
 
 ## API Documentation
 
-When the backend is running, Swagger UI is available at:
-- http://localhost:8080/swagger-ui.html (direct)
-- http://localhost/swagger-ui/ (through nginx)
+Swagger UI is disabled by default for security. To enable it for development, set `SWAGGER_ENABLED=true` in your environment or `.env` file, then access:
+- http://localhost:8080/swagger-ui.html (direct, dev profile)
+- http://localhost/swagger-ui/ (through nginx, requires nginx config change)
 
 ## Project Structure
 
 ```
 bottlevault/
-├── backend/          # Kotlin + Spring Boot API
-├── frontend/         # React + TypeScript SPA
-├── docker-compose.yml
+├── backend/               # Kotlin + Spring Boot API
+├── frontend/              # React + TypeScript SPA
+├── docker-compose.yml     # Development (builds from source)
+├── docker-compose.prod.yml # Production (pre-built images from GHCR)
 └── .github/workflows/ci.yml
 ```
 
