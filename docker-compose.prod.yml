@@ -37,6 +37,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,4 +59,15 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    restart: unless-stopped
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: bottlevault-tunnel
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set TUNNEL_TOKEN from Cloudflare Zero Trust dashboard}
+    depends_on:
+      frontend:
+        condition: service_started
     restart: unless-stopped
