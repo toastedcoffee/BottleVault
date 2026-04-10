@@ -35,6 +35,7 @@ app:
     refresh-expiration-ms: 604800000  # 7 days
   registration:
     enabled: ${REGISTRATION_ENABLED:true}
+  allowed-origin: ${ALLOWED_ORIGIN:}
 
 management:
   endpoints:
