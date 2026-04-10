@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import { Wine, LogOut, Plus, Menu, X, Settings, BarChart3 } from 'lucide-react';
 
 export default function AppLayout() {
