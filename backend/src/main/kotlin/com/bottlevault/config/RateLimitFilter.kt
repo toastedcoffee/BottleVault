@@ -64,7 +64,8 @@ class RateLimitFilter(
         path.startsWith("/api/auth/")
 
     private fun getClientIp(request: HttpServletRequest): String =
-        request.getHeader("X-Real-IP")
+        request.getHeader("CF-Connecting-IP")
+            ?: request.getHeader("X-Real-IP")
             ?: request.getHeader("X-Forwarded-For")?.split(",")?.firstOrNull()?.trim()
             ?: request.remoteAddr
 
