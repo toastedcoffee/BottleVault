@@ -113,6 +113,18 @@ Access the app from any device on your network at `http://<server-ip>`.
 - **Responsive Design** — Mobile-friendly with touch targets and hamburger nav
 - **Docker Deployment** — Single `docker compose up` to deploy on any Docker host
 
+## Emergency Password Reset
+
+If a user is locked out, reset their password directly against the database from the Docker host:
+
+```bash
+./scripts/reset-password.sh user@example.com
+```
+
+The script verifies the user exists, prompts for a new password (twice), generates a BCrypt hash via a throwaway `httpd:alpine` container, and updates the `users` table. Existing JWTs for that user remain valid until they expire — this only changes the credentials used at login.
+
+For everyday password changes, use the Settings page in the app instead.
+
 ## API Documentation
 
 Swagger UI is disabled by default for security. To enable it for development, set `SWAGGER_ENABLED=true` in your environment or `.env` file, then access:
