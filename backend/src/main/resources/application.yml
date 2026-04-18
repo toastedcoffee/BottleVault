@@ -35,7 +35,10 @@ app:
     refresh-expiration-ms: 604800000  # 7 days
   registration:
     enabled: ${REGISTRATION_ENABLED:true}
-  allowed-origin: ${ALLOWED_ORIGIN:}
+  cors:
+    # Comma-separated list of allowed origins for CORS on /api/**
+    # Example: https://cellar.bottlevault.app,https://bottlevault.app
+    allowed-origins: ${ALLOWED_ORIGINS:}
 
 management:
   endpoints:

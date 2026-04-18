@@ -12,7 +12,7 @@
 # Optional environment variables (sensible defaults):
 #   REGISTRATION_ENABLED — allow new user registration (default: true)
 #   SWAGGER_ENABLED      — expose Swagger UI at /swagger-ui (default: false)
-#   ALLOWED_ORIGIN       — public URL for CORS (default: none — set when using a tunnel)
+#   ALLOWED_ORIGINS      — comma-separated public URLs for CORS (default: none — set when using a tunnel)
 #   PORT                 — host port for the web UI (default: 80)
 
 services:
@@ -22,7 +22,7 @@ services:
     environment:
       POSTGRES_DB: bottlevault
       POSTGRES_USER: bottlevault
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      POSTGRES_PASSWORD: $DB_PASSWORD
     # Bind mount keeps data visible on the host for ZFS snapshots / backups.
     # On TrueNAS with Dockge this resolves to /mnt/<pool>/configs/stacks/bottlevault/data/postgres
     volumes:
@@ -43,16 +43,17 @@ services:
     environment:
       DATABASE_URL: jdbc:postgresql://postgres:5432/bottlevault
       DATABASE_USERNAME: bottlevault
-      DATABASE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      DATABASE_PASSWORD: $DB_PASSWORD
+      JWT_SECRET: $JWT_SECRET
       # Set to false after creating your account to lock down self-registration
-      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
+      REGISTRATION_ENABLED: true
       # Swagger UI is disabled in prod by default — also blocked at nginx as defense in depth
-      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
-      # Public origin for CORS — e.g. https://cellar.bottlevault.app when using the tunnel.
-      # localhost origins are always allowed; this adds the public hostname on top.
+      SWAGGER_ENABLED: false
+      # Comma-separated allowed origins for CORS on /api/**.
+      # Example: https://cellar.bottlevault.app
+      # Multiple: https://cellar.bottlevault.app,https://bottlevault.app
       # Required when the frontend is accessed via Cloudflare Tunnel or any non-localhost URL.
-      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,7 +73,7 @@ services:
     container_name: bottlevault-web
     # The only service bound to a host port — serves the React app and proxies /api/ to backend
     ports:
-      - "${PORT:-80}:80"
+      - 3312:80
     depends_on:
       backend:
         condition: service_healthy
@@ -86,7 +87,7 @@ services:
     container_name: bottlevault-tunnel
     command: tunnel run
     environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set TUNNEL_TOKEN from Cloudflare Zero Trust dashboard}
+      TUNNEL_TOKEN: $TUNNEL_TOKEN
     depends_on:
       frontend:
         condition: service_started
