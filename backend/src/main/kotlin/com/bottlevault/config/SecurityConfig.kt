@@ -22,7 +22,7 @@ class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
     private val rateLimitFilter: RateLimitFilter,
     @Value("\${springdoc.swagger-ui.enabled:false}") private val swaggerEnabled: Boolean,
-    @Value("\${app.allowed-origin:}") private val allowedOrigin: String
+    @Value("\${app.cors.allowed-origins:}") private val allowedOriginsCsv: String
 ) {
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
@@ -58,11 +58,14 @@ class SecurityConfig(
 
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
+        // Comma-separated list from app.cors.allowed-origins (env var ALLOWED_ORIGINS in prod,
+        // or configured per-profile in application-<profile>.yml for dev/test).
+        val origins = allowedOriginsCsv
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+
         val config = CorsConfiguration()
-        val origins = mutableListOf("http://localhost", "http://localhost:80")
-        if (allowedOrigin.isNotBlank()) {
-            origins.add(allowedOrigin)
-        }
         config.allowedOrigins = origins
         config.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
         config.allowedHeaders = listOf("Authorization", "Content-Type")
