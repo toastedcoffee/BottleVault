@@ -1,0 +1,64 @@
+# Dependabot version updates
+#
+# Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+#
+# Strategy:
+# - Weekly schedule — enough to stay current, not enough to be noisy
+# - Group patch/minor updates per ecosystem into a single PR (one review, one CI run)
+# - Major updates land as individual PRs (they can break things, review each on merit)
+# - open-pull-requests-limit caps the blast radius if something goes wrong
+#
+# Security advisories are handled separately by Dependabot Security Updates and
+# always open immediately regardless of this schedule.
+
+version: 2
+updates:
+  # Frontend (Vite + React + TypeScript)
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Backend (Spring Boot + Kotlin via Gradle)
+  - package-ecosystem: "gradle"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      backend-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Frontend container base image (nginx)
+  - package-ecosystem: "docker"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+
+  # Backend container base image (JDK / Spring Boot image)
+  - package-ecosystem: "docker"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+
+  # GitHub Actions (actions/checkout, setup-java, etc.)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
