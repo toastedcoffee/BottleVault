@@ -71,11 +71,14 @@ if [[ -z "$HASH" || "$HASH" != \$2a\$10\$* ]]; then
   exit 1
 fi
 
-# Update the password using psql variable substitution (safe against injection)
+# Update the password using psql variable substitution (safe against injection).
+# NOTE: `:'var'` interpolation works when SQL is piped on stdin, but NOT when
+# passed via -c. We use a here-doc so psql parses the script and expands the
+# variables client-side before sending to the server.
 docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" \
-  -v "email=$EMAIL" -v "hash=$HASH" \
-  -c "UPDATE users SET password_hash = :'hash', updated_at = NOW() WHERE email = :'email';" \
-  > /dev/null
+  -v "email=$EMAIL" -v "hash=$HASH" <<'SQL' > /dev/null
+UPDATE users SET password_hash = :'hash', updated_at = NOW() WHERE email = :'email';
+SQL
 
 echo "Password reset successfully for $EMAIL."
 echo "All existing sessions for this user remain valid until their JWT expires."
