@@ -6,9 +6,11 @@ import com.bottlevault.common.exception.ResourceAlreadyExistsException
 import com.bottlevault.common.exception.ResourceNotFoundException
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 @Service
+@Transactional(readOnly = true)
 class BrandService(private val brandRepository: BrandRepository) {
 
     fun getAllBrands(): List<BrandResponse> =
@@ -23,6 +25,7 @@ class BrandService(private val brandRepository: BrandRepository) {
     fun searchBrands(query: String): List<BrandResponse> =
         brandRepository.searchByName(query).map { BrandResponse.from(it) }
 
+    @Transactional
     fun createBrand(request: BrandCreateRequest): BrandResponse {
         if (brandRepository.existsByName(request.name)) {
             throw ResourceAlreadyExistsException("Brand '${request.name}' already exists")
