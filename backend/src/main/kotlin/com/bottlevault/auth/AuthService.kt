@@ -8,16 +8,19 @@ import com.bottlevault.user.dto.UpdateProfileRequest
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import java.util.UUID
 
 @Service
+@Transactional(readOnly = true)
 class AuthService(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
     private val jwtTokenProvider: JwtTokenProvider,
     @Value("\${app.registration.enabled}") private val registrationEnabled: Boolean
 ) {
+    @Transactional
     fun register(request: RegisterRequest): AuthResponse {
         if (!registrationEnabled) {
             throw IllegalStateException("Registration is currently disabled")
@@ -61,6 +64,7 @@ class AuthService(
         return createAuthResponse(user)
     }
 
+    @Transactional
     fun updateProfile(userId: UUID, request: UpdateProfileRequest): UserResponse {
         val user = userRepository.findById(userId)
             .orElseThrow { ResourceNotFoundException("User not found") }
@@ -80,6 +84,7 @@ class AuthService(
         )
     }
 
+    @Transactional
     fun changePassword(userId: UUID, request: ChangePasswordRequest) {
         val user = userRepository.findById(userId)
             .orElseThrow { ResourceNotFoundException("User not found") }

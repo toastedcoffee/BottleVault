@@ -4,10 +4,12 @@ import com.bottlevault.product.ProductRepository
 import com.bottlevault.product.dto.ProductResponse
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
 
 @Service
+@Transactional(readOnly = true)
 class BarcodeService(
     private val productRepository: ProductRepository
 ) {

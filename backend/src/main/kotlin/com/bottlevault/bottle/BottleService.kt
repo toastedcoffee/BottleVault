@@ -14,6 +14,7 @@ import java.time.Instant
 import java.util.UUID
 
 @Service
+@Transactional(readOnly = true)
 class BottleService(
     private val bottleRepository: BottleRepository,
     private val productRepository: ProductRepository,
