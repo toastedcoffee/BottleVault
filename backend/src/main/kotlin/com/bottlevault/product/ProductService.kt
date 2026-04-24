@@ -6,9 +6,11 @@ import com.bottlevault.common.model.AlcoholType
 import com.bottlevault.product.dto.ProductCreateRequest
 import com.bottlevault.product.dto.ProductResponse
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 @Service
+@Transactional(readOnly = true)
 class ProductService(
     private val productRepository: ProductRepository,
     private val brandRepository: BrandRepository
@@ -34,6 +36,7 @@ class ProductService(
         return ProductResponse.from(product)
     }
 
+    @Transactional
     fun createProduct(request: ProductCreateRequest): ProductResponse {
         val brand = brandRepository.findById(UUID.fromString(request.brandId))
             .orElseThrow { ResourceNotFoundException("Brand not found") }
