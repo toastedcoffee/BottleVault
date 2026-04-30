@@ -25,3 +25,7 @@ app:
   rate-limit:
     max-attempts: 1000
     window-seconds: 60
+  barcode:
+    miss-ttl-days: 7
+    barcodelookup:
+      api-key: ""
