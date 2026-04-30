@@ -39,6 +39,12 @@ app:
     # Comma-separated list of allowed origins for CORS on /api/**
     # Example: https://cellar.bottlevault.app,https://bottlevault.app
     allowed-origins: ${ALLOWED_ORIGINS:}
+  barcode:
+    # Days to suppress external lookups for a UPC after every provider has missed.
+    miss-ttl-days: ${BARCODE_MISS_TTL_DAYS:7}
+    barcodelookup:
+      # Optional paid provider. Empty value disables the provider entirely.
+      api-key: ${BARCODE_LOOKUP_API_KEY:}
 
 management:
   endpoints:
