@@ -1,5 +1,6 @@
 package com.bottlevault.barcode
 
+import com.bottlevault.barcode.dto.BarcodeLookupResponse
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
