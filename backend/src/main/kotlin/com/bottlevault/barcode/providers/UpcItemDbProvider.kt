@@ -33,7 +33,7 @@ class UpcItemDbProvider : BarcodeProvider {
                 brandName = item.brand?.takeIf { it.isNotBlank() },
                 barcode = barcode,
                 size = item.size?.takeIf { it.isNotBlank() },
-                abv = AbvParser.parse(item.title) ?: AbvParser.parse(item.description),
+                abv = AbvParser.parsePercent(item.title) ?: AbvParser.parsePercent(item.description),
                 imageUrl = item.images?.firstOrNull()?.takeIf { it.isNotBlank() },
                 categories = item.category?.takeIf { it.isNotBlank() }
             )

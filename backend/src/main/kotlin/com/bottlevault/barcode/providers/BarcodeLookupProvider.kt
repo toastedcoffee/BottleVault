@@ -43,7 +43,7 @@ class BarcodeLookupProvider(
                 brandName = (product.brand ?: product.manufacturer)?.takeIf { it.isNotBlank() },
                 barcode = barcode,
                 size = product.size?.takeIf { it.isNotBlank() },
-                abv = AbvParser.parse(name) ?: AbvParser.parse(product.description),
+                abv = AbvParser.parsePercent(name) ?: AbvParser.parsePercent(product.description),
                 imageUrl = product.images?.firstOrNull()?.takeIf { it.isNotBlank() },
                 categories = product.category?.takeIf { it.isNotBlank() }
             )
