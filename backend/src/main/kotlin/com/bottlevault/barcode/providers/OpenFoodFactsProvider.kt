@@ -33,7 +33,7 @@ class OpenFoodFactsProvider : BarcodeProvider {
                 brandName = product.brands?.takeIf { it.isNotBlank() },
                 barcode = barcode,
                 size = product.quantity?.takeIf { it.isNotBlank() },
-                abv = AbvParser.parse(product.alcoholByVolume),
+                abv = AbvParser.parseNumeric(product.alcoholByVolume),
                 imageUrl = product.imageUrl?.takeIf { it.isNotBlank() },
                 categories = product.categories?.takeIf { it.isNotBlank() }
             )
