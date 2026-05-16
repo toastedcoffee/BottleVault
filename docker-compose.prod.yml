@@ -54,6 +54,11 @@ services:
       # Multiple: https://cellar.bottlevault.app,https://bottlevault.app
       # Required when the frontend is accessed via Cloudflare Tunnel or any non-localhost URL.
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      UPLOADS_DIR: /app/uploads
+    # Bottle photos live on the host so ZFS snapshots back them up alongside the DB.
+    # On TrueNAS with Dockge this resolves to /mnt/<pool>/configs/stacks/bottlevault/data/uploads
+    volumes:
+      - ./data/uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy

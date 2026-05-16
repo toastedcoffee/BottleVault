@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import type { BottleResponse } from '../../types/bottle';
 import StatusDropdown from './StatusDropdown';
+import BottleImage from './BottleImage';
 import { Star, MapPin, DollarSign } from 'lucide-react';
 
 interface BottleCardProps {
@@ -17,6 +18,12 @@ export default function BottleCard({ bottle, onDelete }: BottleCardProps) {
       className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
       onClick={() => navigate(`/inventory/${bottle.id}`)}
     >
+      <BottleImage
+        bottleId={bottle.id}
+        hasImage={!!bottle.imagePath}
+        className="w-full h-32 object-cover rounded-t-lg"
+        alt={product.name}
+      />
       <div className="p-4">
         <div className="flex justify-between items-start mb-2">
           <div className="flex-1 min-w-0">

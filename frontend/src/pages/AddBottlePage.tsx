@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useBrands, useCreateBrand } from '../hooks/useBrands';
 import { useProducts, useCreateProduct } from '../hooks/useProducts';
-import { useCreateBottle } from '../hooks/useBottles';
+import { useCreateBottle, useUploadBottleImage } from '../hooks/useBottles';
 import { useBarcodeLookup } from '../hooks/useBarcode';
 import BarcodeScanner from '../components/barcode/BarcodeScanner';
 import type { BottleStatus } from '../types/bottle';
@@ -50,6 +50,8 @@ export default function AddBottlePage() {
   const [notes, setNotes] = useState('');
   const [rating, setRating] = useState('');
   const [storageLocation, setStorageLocation] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const [error, setError] = useState('');
 
@@ -59,6 +61,7 @@ export default function AddBottlePage() {
   const createBrand = useCreateBrand();
   const createProduct = useCreateProduct();
   const createBottle = useCreateBottle();
+  const uploadImage = useUploadBottleImage();
   const barcodeLookup = useBarcodeLookup();
 
   const handleBarcodeScan = useCallback((barcode: string) => {
@@ -145,7 +148,7 @@ export default function AddBottlePage() {
         return;
       }
 
-      await createBottle.mutateAsync({
+      const bottle = await createBottle.mutateAsync({
         productId,
         status,
         purchaseDate: purchaseDate || undefined,
@@ -156,6 +159,15 @@ export default function AddBottlePage() {
         storageLocation: storageLocation || undefined,
       });
 
+      if (imageFile) {
+        try {
+          await uploadImage.mutateAsync({ id: bottle.id, file: imageFile });
+        } catch {
+          // Bottle is already created; surface a soft warning but still navigate.
+          setError('Bottle saved, but image upload failed. You can try again from the edit page.');
+        }
+      }
+
       navigate('/inventory');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to add bottle';
@@ -163,7 +175,17 @@ export default function AddBottlePage() {
     }
   };
 
-  const isSaving = createBrand.isPending || createProduct.isPending || createBottle.isPending;
+  const isSaving =
+    createBrand.isPending || createProduct.isPending || createBottle.isPending || uploadImage.isPending;
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setImageFile(file);
+    setImagePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return file ? URL.createObjectURL(file) : null;
+    });
+  };
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -462,6 +484,23 @@ export default function AddBottlePage() {
                 placeholder="Tasting notes, thoughts..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Photo</label>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleImageChange}
+                className="w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-sm file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+              />
+              <p className="text-xs text-gray-500 mt-1">JPEG, PNG, or WebP. Max 5 MB.</p>
+              {imagePreview && (
+                <img
+                  src={imagePreview}
+                  alt="Preview"
+                  className="mt-2 w-32 h-32 object-cover rounded-md border border-gray-200"
+                />
+              )}
             </div>
           </div>
         </fieldset>

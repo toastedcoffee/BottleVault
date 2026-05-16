@@ -13,6 +13,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.mock.web.MockMultipartFile
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
@@ -276,6 +277,125 @@ class BottleVaultIntegrationTest {
     fun `statistics requires authentication`() {
         mockMvc.perform(get("/api/statistics"))
             .andExpect(status().isForbidden)
+    }
+
+    @Test
+    fun `can upload, retrieve, and delete a bottle image`() {
+        val bottleId = createBottle(searchName = "Old No. 7", token = accessToken)
+
+        // Minimal valid PNG (8x8 transparent) — 1px would also work, this just exercises bytes
+        val png = byteArrayOf(
+            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // signature
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+            0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4.toByte(), 0x89.toByte(),
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54,
+            0x78, 0x9C.toByte(), 0x62, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01,
+            0x0D, 0x0A, 0x2D, 0xB4.toByte(),
+            0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE.toByte(), 0x42, 0x60, 0x82.toByte()
+        )
+        val file = MockMultipartFile("file", "test.png", "image/png", png)
+
+        val uploadResult = mockMvc.perform(
+            multipart("/api/bottles/$bottleId/image")
+                .file(file)
+                .header("Authorization", "Bearer $accessToken")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.imagePath").isNotEmpty)
+            .andReturn()
+
+        val imagePath = objectMapper.readTree(uploadResult.response.contentAsString)["imagePath"].asText()
+        assertTrue(imagePath.startsWith("bottles/"), "imagePath should be relative under bottles/")
+
+        // GET returns the same bytes with image/png content type
+        val getResult = mockMvc.perform(
+            get("/api/bottles/$bottleId/image")
+                .header("Authorization", "Bearer $accessToken")
+        )
+            .andExpect(status().isOk)
+            .andExpect(header().string("Content-Type", "image/png"))
+            .andReturn()
+
+        assertEquals(png.size, getResult.response.contentAsByteArray.size)
+
+        // DELETE clears the path
+        mockMvc.perform(
+            delete("/api/bottles/$bottleId/image")
+                .header("Authorization", "Bearer $accessToken")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.imagePath").doesNotExist())
+
+        // GET now 404
+        mockMvc.perform(
+            get("/api/bottles/$bottleId/image")
+                .header("Authorization", "Bearer $accessToken")
+        )
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `image upload rejects unsupported mime type`() {
+        val bottleId = createBottle(searchName = "Old No. 7", token = accessToken)
+        val file = MockMultipartFile("file", "evil.txt", "text/plain", "not an image".toByteArray())
+
+        mockMvc.perform(
+            multipart("/api/bottles/$bottleId/image")
+                .file(file)
+                .header("Authorization", "Bearer $accessToken")
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `image upload enforces per-user ownership`() {
+        // First user creates a bottle
+        val bottleId = createBottle(searchName = "Old No. 7", token = accessToken)
+
+        // Second user registers
+        val otherEmail = "other-${System.nanoTime()}@example.com"
+        val otherToken = registerAndGetToken(otherEmail)
+
+        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47)
+        val file = MockMultipartFile("file", "test.png", "image/png", png)
+
+        // Second user cannot upload to first user's bottle
+        mockMvc.perform(
+            multipart("/api/bottles/$bottleId/image")
+                .file(file)
+                .header("Authorization", "Bearer $otherToken")
+        )
+            .andExpect(status().isNotFound)
+    }
+
+    private fun createBottle(searchName: String, token: String): String {
+        val productsResult = mockMvc.perform(get("/api/products").param("search", searchName))
+            .andExpect(status().isOk)
+            .andReturn()
+        val productId = objectMapper.readTree(productsResult.response.contentAsString)[0]["id"].asText()
+
+        val createResult = mockMvc.perform(
+            post("/api/bottles")
+                .header("Authorization", "Bearer $token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(BottleCreateRequest(productId = productId)))
+        )
+            .andExpect(status().isCreated)
+            .andReturn()
+        return objectMapper.readTree(createResult.response.contentAsString)["id"].asText()
+    }
+
+    private fun registerAndGetToken(email: String): String {
+        val req = RegisterRequest(email = email, password = "password123", displayName = "Other")
+        val result = mockMvc.perform(
+            post("/api/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req))
+        )
+            .andExpect(status().isCreated)
+            .andReturn()
+        return objectMapper.readValue(result.response.contentAsString, AuthResponse::class.java).accessToken
     }
 
     @Test
