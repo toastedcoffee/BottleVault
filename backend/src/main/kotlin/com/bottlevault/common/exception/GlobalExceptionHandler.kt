@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.multipart.MaxUploadSizeExceededException
 import java.time.Instant
 
 data class ErrorResponse(
@@ -47,5 +48,11 @@ class GlobalExceptionHandler {
     fun handleBadRequest(ex: IllegalArgumentException): ResponseEntity<ErrorResponse> =
         ResponseEntity.badRequest().body(
             ErrorResponse(400, "Bad Request", ex.message)
+        )
+
+    @ExceptionHandler(MaxUploadSizeExceededException::class)
+    fun handleMaxUpload(ex: MaxUploadSizeExceededException): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(
+            ErrorResponse(413, "Payload Too Large", "Uploaded file exceeds the maximum allowed size")
         )
 }

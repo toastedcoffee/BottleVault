@@ -25,6 +25,11 @@ spring:
       write-dates-as-timestamps: false
     default-property-inclusion: non_null
 
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
 server:
   port: ${SERVER_PORT:8080}
 
@@ -45,6 +50,9 @@ app:
     barcodelookup:
       # Optional paid provider. Empty value disables the provider entirely.
       api-key: ${BARCODE_LOOKUP_API_KEY:}
+  uploads:
+    # Directory where bottle images are stored. Mounted as a volume in docker-compose.
+    dir: ${UPLOADS_DIR:/app/uploads}
 
 management:
   endpoints:

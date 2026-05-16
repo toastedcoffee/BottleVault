@@ -18,7 +18,8 @@ import java.util.UUID
 class BottleService(
     private val bottleRepository: BottleRepository,
     private val productRepository: ProductRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val bottleImageService: BottleImageService
 ) {
     fun getBottles(
         userId: UUID,
@@ -103,6 +104,7 @@ class BottleService(
     @Transactional
     fun deleteBottle(id: UUID, userId: UUID) {
         val bottle = findUserBottle(id, userId)
+        bottleImageService.deleteFileForBottle(bottle)
         bottleRepository.delete(bottle)
     }
 

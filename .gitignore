@@ -17,6 +17,7 @@ local.properties
 backend/build/
 backend/.gradle/
 backend/out/
+backend/uploads-dev/
 
 # Frontend
 frontend/node_modules/
@@ -26,6 +27,9 @@ frontend/.cache/
 # Environment
 .env
 *.env.local
+
+# Runtime data (docker-compose bind mounts)
+data/
 
 # OS
 Thumbs.db

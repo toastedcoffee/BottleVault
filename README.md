@@ -72,10 +72,12 @@ Pre-built images are published to GitHub Container Registry on every merge to ma
    - `JWT_SECRET` — generate with `openssl rand -base64 48`
    - `REGISTRATION_ENABLED` — `true` (change to `false` after creating your account)
    - `PORT` — (optional, default `80`)
-4. **Create the data directory** from TrueNAS shell:
+4. **Create the data directories** from TrueNAS shell:
    ```bash
    mkdir -p /mnt/AppPool/configs/stacks/bottlevault/data/postgres
+   mkdir -p /mnt/AppPool/configs/stacks/bottlevault/data/uploads
    ```
+   The `uploads/` directory persists bottle photos; back it up alongside `postgres/`.
 5. **Deploy** the stack from Dockge
 6. **Register** your account at `http://<server-ip>`
 7. **Lock down** — set `REGISTRATION_ENABLED=false` in Dockge and redeploy
