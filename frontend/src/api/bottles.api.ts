@@ -29,4 +29,21 @@ export const bottlesApi = {
 
   delete: (id: string) =>
     apiClient.delete(`/bottles/${id}`),
+
+  uploadImage: (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    // Let axios set the multipart boundary by removing the default Content-Type.
+    return apiClient
+      .post<BottleResponse>(`/bottles/${id}/image`, formData, {
+        headers: { 'Content-Type': undefined },
+      })
+      .then((r) => r.data);
+  },
+
+  deleteImage: (id: string) =>
+    apiClient.delete<BottleResponse>(`/bottles/${id}/image`).then((r) => r.data),
+
+  fetchImageBlob: (id: string) =>
+    apiClient.get(`/bottles/${id}/image`, { responseType: 'blob' }).then((r) => r.data as Blob),
 };

@@ -29,3 +29,6 @@ app:
     miss-ttl-days: 7
     barcodelookup:
       api-key: ""
+  uploads:
+    # Tests write to a per-JVM temp dir; cleaned up between runs via @TempDir or junit lifecycle.
+    dir: ${java.io.tmpdir}/bottlevault-test-uploads

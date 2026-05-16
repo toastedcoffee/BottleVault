@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useBottle, useDeleteBottle } from '../hooks/useBottles';
 import StatusBadge from '../components/bottles/StatusBadge';
+import BottleImage from '../components/bottles/BottleImage';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { ArrowLeft, Edit, Trash2, Star, MapPin, DollarSign, Calendar } from 'lucide-react';
@@ -28,7 +29,15 @@ export default function BottleDetailPage() {
         Back to Inventory
       </button>
 
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+        {bottle.imagePath && (
+          <BottleImage
+            bottleId={bottle.id}
+            hasImage
+            className="w-full max-h-96 object-contain bg-gray-50"
+            alt={product.name}
+          />
+        )}
         <div className="p-6">
           <div className="flex justify-between items-start">
             <div>
