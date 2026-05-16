@@ -1,15 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useBottle, useUpdateBottle } from '../hooks/useBottles';
+import {
+  useBottle,
+  useUpdateBottle,
+  useUploadBottleImage,
+  useDeleteBottleImage,
+} from '../hooks/useBottles';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import BottleImage from '../components/bottles/BottleImage';
 import type { BottleStatus } from '../types/bottle';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 
 export default function EditBottlePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: bottle, isLoading } = useBottle(id!);
   const updateBottle = useUpdateBottle();
+  const uploadImage = useUploadBottleImage();
+  const deleteImage = useDeleteBottleImage();
 
   const [status, setStatus] = useState<BottleStatus>('UNOPENED');
   const [percentageLeft, setPercentageLeft] = useState(100);
@@ -36,6 +44,28 @@ export default function EditBottlePage() {
 
   if (isLoading) return <LoadingSpinner className="py-20" />;
   if (!bottle) return <div className="text-center py-20 text-gray-500">Bottle not found</div>;
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError('');
+    try {
+      await uploadImage.mutateAsync({ id: id!, file });
+    } catch {
+      setError('Image upload failed. Check that the file is JPEG/PNG/WebP and under 5 MB.');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    setError('');
+    try {
+      await deleteImage.mutateAsync(id!);
+    } catch {
+      setError('Failed to remove image');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,6 +111,38 @@ export default function EditBottlePage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        <fieldset className="border border-gray-200 rounded-lg p-4">
+          <legend className="text-sm font-semibold text-gray-700 px-2">Photo</legend>
+          <div className="flex items-start gap-4">
+            <BottleImage
+              bottleId={bottle.id}
+              hasImage={!!bottle.imagePath}
+              className="w-32 h-32 object-cover rounded-md border border-gray-200"
+            />
+            <div className="flex-1 space-y-2">
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleImageChange}
+                disabled={uploadImage.isPending}
+                className="w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-sm file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+              />
+              <p className="text-xs text-gray-500">JPEG, PNG, or WebP. Max 5 MB.</p>
+              {bottle.imagePath && (
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  disabled={deleteImage.isPending}
+                  className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Remove photo
+                </button>
+              )}
+            </div>
+          </div>
+        </fieldset>
+
         <fieldset className="border border-gray-200 rounded-lg p-4">
           <legend className="text-sm font-semibold text-gray-700 px-2">Bottle Details</legend>
           <div className="grid grid-cols-2 gap-3">

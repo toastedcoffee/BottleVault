@@ -58,3 +58,25 @@ export function useDeleteBottle() {
     },
   });
 }
+
+export function useUploadBottleImage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) => bottlesApi.uploadImage(id, file),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['bottles'] });
+      queryClient.invalidateQueries({ queryKey: ['bottle-image', vars.id] });
+    },
+  });
+}
+
+export function useDeleteBottleImage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => bottlesApi.deleteImage(id),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ['bottles'] });
+      queryClient.invalidateQueries({ queryKey: ['bottle-image', id] });
+    },
+  });
+}
