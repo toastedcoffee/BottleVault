@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to publish (e.g. "pr52", "image-upload-test"). Never updates :latest.'
+        required: true
+        type: string
 
 jobs:
   backend-test:
@@ -45,7 +51,7 @@ jobs:
   publish-images:
     needs: [backend-test, frontend-check]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       packages: write
@@ -57,11 +63,23 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute image tag flags
+        id: tags
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual branch build — publish under the user-supplied tag + SHA only.
+            # :latest is intentionally NOT updated, so main-tracking deploys are not disturbed.
+            echo "api=-t ghcr.io/toastedcoffee/bottlevault-api:${{ inputs.tag }} -t ghcr.io/toastedcoffee/bottlevault-api:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            echo "web=-t ghcr.io/toastedcoffee/bottlevault-web:${{ inputs.tag }} -t ghcr.io/toastedcoffee/bottlevault-web:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "api=-t ghcr.io/toastedcoffee/bottlevault-api:latest -t ghcr.io/toastedcoffee/bottlevault-api:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            echo "web=-t ghcr.io/toastedcoffee/bottlevault-web:latest -t ghcr.io/toastedcoffee/bottlevault-web:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build and push backend image
         run: |
-          docker build -t ghcr.io/toastedcoffee/bottlevault-api:latest -t ghcr.io/toastedcoffee/bottlevault-api:${{ github.sha }} ./backend
+          docker build ${{ steps.tags.outputs.api }} ./backend
           docker push ghcr.io/toastedcoffee/bottlevault-api --all-tags
       - name: Build and push frontend image
         run: |
-          docker build -t ghcr.io/toastedcoffee/bottlevault-web:latest -t ghcr.io/toastedcoffee/bottlevault-web:${{ github.sha }} ./frontend
+          docker build ${{ steps.tags.outputs.web }} ./frontend
           docker push ghcr.io/toastedcoffee/bottlevault-web --all-tags
