@@ -56,6 +56,8 @@ jobs:
       contents: read
       packages: write
     steps:
+      # No `ref:` — workflow_dispatch defaults to the branch picked in the UI
+      # (github.ref), which is the intended behavior here.
       - uses: actions/checkout@v6
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -63,23 +65,44 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Compute image tag flags
-        id: tags
+      - name: Resolve image tag
+        env:
+          # Cross template-interpolation into a real env var so the script body
+          # never embeds untrusted user input — closes the GHA template-injection
+          # vector (CWE-94) for the workflow_dispatch path.
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # Manual branch build — publish under the user-supplied tag + SHA only.
-            # :latest is intentionally NOT updated, so main-tracking deploys are not disturbed.
-            echo "api=-t ghcr.io/toastedcoffee/bottlevault-api:${{ inputs.tag }} -t ghcr.io/toastedcoffee/bottlevault-api:${{ github.sha }}" >> "$GITHUB_OUTPUT"
-            echo "web=-t ghcr.io/toastedcoffee/bottlevault-web:${{ inputs.tag }} -t ghcr.io/toastedcoffee/bottlevault-web:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            # Validate against Docker's tag charset: ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$
+            # Catches empty input (required:true only checks presence), shell
+            # metacharacters, and anything Docker would later reject.
+            if ! printf '%s' "$INPUT_TAG" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$'; then
+              echo "::error::Invalid tag input. Must match ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$"
+              exit 1
+            fi
+            TAG="$INPUT_TAG"
           else
-            echo "api=-t ghcr.io/toastedcoffee/bottlevault-api:latest -t ghcr.io/toastedcoffee/bottlevault-api:${{ github.sha }}" >> "$GITHUB_OUTPUT"
-            echo "web=-t ghcr.io/toastedcoffee/bottlevault-web:latest -t ghcr.io/toastedcoffee/bottlevault-web:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            # main push — publish :latest as the rolling deploy target.
+            TAG=latest
           fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
       - name: Build and push backend image
+        env:
+          SHA: ${{ github.sha }}
         run: |
-          docker build ${{ steps.tags.outputs.api }} ./backend
-          docker push ghcr.io/toastedcoffee/bottlevault-api --all-tags
+          docker build \
+            -t "ghcr.io/toastedcoffee/bottlevault-api:$TAG" \
+            -t "ghcr.io/toastedcoffee/bottlevault-api:$SHA" \
+            ./backend
+          docker push "ghcr.io/toastedcoffee/bottlevault-api:$TAG"
+          docker push "ghcr.io/toastedcoffee/bottlevault-api:$SHA"
       - name: Build and push frontend image
+        env:
+          SHA: ${{ github.sha }}
         run: |
-          docker build ${{ steps.tags.outputs.web }} ./frontend
-          docker push ghcr.io/toastedcoffee/bottlevault-web --all-tags
+          docker build \
+            -t "ghcr.io/toastedcoffee/bottlevault-web:$TAG" \
+            -t "ghcr.io/toastedcoffee/bottlevault-web:$SHA" \
+            ./frontend
+          docker push "ghcr.io/toastedcoffee/bottlevault-web:$TAG"
+          docker push "ghcr.io/toastedcoffee/bottlevault-web:$SHA"
