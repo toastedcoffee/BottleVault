@@ -21,4 +21,11 @@ class AuthController(private val authService: AuthService) {
     @PostMapping("/refresh")
     fun refresh(@Valid @RequestBody request: RefreshRequest): AuthResponse =
         authService.refresh(request.refreshToken)
+
+    // No auth required: the refresh token in the body is the credential being
+    // revoked, and revoking an unknown token is harmless (idempotent 204).
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun logout(@Valid @RequestBody request: RefreshRequest) =
+        authService.logout(request.refreshToken)
 }

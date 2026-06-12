@@ -36,8 +36,11 @@ server:
 app:
   jwt:
     secret: ${JWT_SECRET}
-    expiration-ms: 86400000      # 24 hours
-    refresh-expiration-ms: 604800000  # 7 days
+    # Access tokens are short-lived; clients renew them transparently via the
+    # refresh endpoint. Keeping this small limits how long a leaked access
+    # token is useful, since access tokens themselves can't be revoked.
+    expiration-ms: 900000        # 15 minutes
+    refresh-expiration-ms: 604800000  # 7 days (server-side, revocable)
   registration:
     enabled: ${REGISTRATION_ENABLED:true}
   cors:

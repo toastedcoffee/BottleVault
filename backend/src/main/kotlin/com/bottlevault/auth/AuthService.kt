@@ -18,6 +18,7 @@ class AuthService(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
     private val jwtTokenProvider: JwtTokenProvider,
+    private val refreshTokenService: RefreshTokenService,
     @Value("\${app.registration.enabled}") private val registrationEnabled: Boolean
 ) {
     @Transactional
@@ -38,6 +39,7 @@ class AuthService(
         return createAuthResponse(savedUser)
     }
 
+    @Transactional
     fun login(request: LoginRequest): AuthResponse {
         val user = userRepository.findByEmail(request.email)
             ?: throw IllegalArgumentException("Invalid email or password")
@@ -49,19 +51,23 @@ class AuthService(
         return createAuthResponse(user)
     }
 
+    @Transactional
     fun refresh(refreshToken: String): AuthResponse {
-        if (!jwtTokenProvider.validateToken(refreshToken)) {
-            throw IllegalArgumentException("Invalid refresh token")
-        }
-        if (jwtTokenProvider.getTokenType(refreshToken) != "refresh") {
-            throw IllegalArgumentException("Invalid token type")
-        }
+        // consume() deletes the presented token, so each refresh token works
+        // exactly once — the response carries its replacement.
+        val userId = refreshTokenService.consume(refreshToken)
+            ?: throw IllegalArgumentException("Invalid or expired refresh token")
 
-        val userId = jwtTokenProvider.getUserIdFromToken(refreshToken)
-        val user = userRepository.findById(java.util.UUID.fromString(userId))
-            .orElseThrow { IllegalArgumentException("User not found") }
+        val user = userRepository.findById(userId)
+            .orElseThrow { IllegalArgumentException("Invalid or expired refresh token") }
 
         return createAuthResponse(user)
+    }
+
+    /** Revokes the presented refresh session. Idempotent — unknown tokens are ignored. */
+    @Transactional
+    fun logout(refreshToken: String) {
+        refreshTokenService.revoke(refreshToken)
     }
 
     @Transactional
@@ -96,13 +102,17 @@ class AuthService(
         user.passwordHash = passwordEncoder.encode(request.newPassword)
         user.updatedAt = Instant.now()
         userRepository.save(user)
+
+        // A password change should end every existing session — if the user is
+        // changing it because the old one leaked, stolen refresh tokens die here.
+        refreshTokenService.revokeAllForUser(userId)
     }
 
     private fun createAuthResponse(user: User): AuthResponse {
         val userId = user.id.toString()
         return AuthResponse(
             accessToken = jwtTokenProvider.generateAccessToken(userId),
-            refreshToken = jwtTokenProvider.generateRefreshToken(userId),
+            refreshToken = refreshTokenService.issue(user.id!!),
             user = UserResponse(
                 id = userId,
                 email = user.email,

@@ -123,7 +123,7 @@ If a user is locked out, reset their password directly against the database from
 ./scripts/reset-password.sh user@example.com
 ```
 
-The script verifies the user exists, prompts for a new password (twice), generates a BCrypt hash via a throwaway `httpd:alpine` container, and updates the `users` table. Existing JWTs for that user remain valid until they expire — this only changes the credentials used at login.
+The script verifies the user exists, prompts for a new password (twice), generates a BCrypt hash via a throwaway `httpd:alpine` container, updates the `users` table, and deletes the user's refresh sessions. Outstanding access tokens expire within 15 minutes; after that, anyone holding the old credentials is fully logged out.
 
 For everyday password changes, use the Settings page in the app instead.
 

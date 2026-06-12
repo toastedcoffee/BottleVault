@@ -78,7 +78,11 @@ fi
 docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" \
   -v "email=$EMAIL" -v "hash=$HASH" <<'SQL' > /dev/null
 UPDATE users SET password_hash = :'hash', updated_at = NOW() WHERE email = :'email';
+-- Revoke all refresh sessions: whoever held the old credentials is logged
+-- out as soon as their short-lived access token expires (15 minutes).
+DELETE FROM refresh_tokens
+WHERE user_id = (SELECT id FROM users WHERE email = :'email');
 SQL
 
 echo "Password reset successfully for $EMAIL."
-echo "All existing sessions for this user remain valid until their JWT expires."
+echo "All refresh sessions revoked; access tokens expire within 15 minutes."

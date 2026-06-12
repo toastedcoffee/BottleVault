@@ -14,6 +14,19 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+// Refresh tokens are single-use (the server rotates them), so concurrent 401s
+// must share ONE refresh request. Whichever request hits 401 first starts the
+// refresh; the rest await the same promise and retry with the new token.
+let refreshPromise: Promise<string> | null = null;
+
+async function refreshAccessToken(refreshToken: string): Promise<string> {
+  // Plain axios, not apiClient: avoids re-entering these interceptors.
+  const { data } = await axios.post('/api/auth/refresh', { refreshToken });
+  sessionStorage.setItem('accessToken', data.accessToken);
+  sessionStorage.setItem('refreshToken', data.refreshToken);
+  return data.accessToken;
+}
+
 // Response interceptor: handle 401 by attempting token refresh
 apiClient.interceptors.response.use(
   (response) => response,
@@ -26,15 +39,16 @@ apiClient.interceptors.response.use(
 
       if (refreshToken) {
         try {
-          const { data } = await axios.post('/api/auth/refresh', { refreshToken });
-          sessionStorage.setItem('accessToken', data.accessToken);
-          sessionStorage.setItem('refreshToken', data.refreshToken);
-          originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+          refreshPromise ??= refreshAccessToken(refreshToken);
+          const accessToken = await refreshPromise;
+          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
           return apiClient(originalRequest);
         } catch {
-          sessionStorage.removeItem('accessToken');
-          sessionStorage.removeItem('refreshToken');
+          // Refresh failed (expired, revoked, or already used) — session is over.
+          sessionStorage.clear();
           window.location.href = '/login';
+        } finally {
+          refreshPromise = null;
         }
       }
     }
