@@ -4,25 +4,21 @@
 .vscode/
 .DS_Store
 
-# Android (legacy)
-.gradle
-/local.properties
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
-
 # Backend
 backend/build/
 backend/.gradle/
 backend/out/
 backend/uploads-dev/
+backend/local.properties
 
 # Frontend
 frontend/node_modules/
 frontend/dist/
 frontend/.cache/
+*.tsbuildinfo
+
+# Claude Code session files
+.claude/
 
 # Environment
 .env
