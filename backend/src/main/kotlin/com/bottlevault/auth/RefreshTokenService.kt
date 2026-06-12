@@ -54,7 +54,12 @@ class RefreshTokenService(
     @Transactional
     fun consume(rawToken: String): UUID? {
         val stored = refreshTokenRepository.findByTokenHash(sha256Hex(rawToken)) ?: return null
-        refreshTokenRepository.delete(stored)
+
+        // Atomic delete-and-check: of two concurrent requests presenting the
+        // same token, only the one that actually removes the row proceeds —
+        // otherwise both would rotate and one token would become two sessions.
+        if (refreshTokenRepository.deleteRowById(stored.id!!) == 0) return null
+
         return if (stored.expiresAt.isAfter(Instant.now())) stored.userId else null
     }
 
