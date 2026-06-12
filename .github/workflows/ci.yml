@@ -67,12 +67,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Resolve image tag
         env:
-          # Cross template-interpolation into a real env var so the script body
-          # never embeds untrusted user input — closes the GHA template-injection
-          # vector (CWE-94) for the workflow_dispatch path.
+          # Cross template-interpolation into real env vars so the script body
+          # never embeds ${{ }} expressions — closes the GHA template-injection
+          # vector (CWE-94) and keeps the style consistent across all values
+          # (even GitHub-controlled ones like event_name).
           INPUT_TAG: ${{ inputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             # Validate against Docker's tag charset: ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$
             # Catches empty input (required:true only checks presence), shell
             # metacharacters, and anything Docker would later reject.
