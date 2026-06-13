@@ -20,6 +20,9 @@ frontend/.cache/
 # Claude Code session files
 .claude/
 
+# Cloud-sync temp files (Google Drive)
+.tmp.driveupload/
+
 # Environment
 .env
 *.env.local

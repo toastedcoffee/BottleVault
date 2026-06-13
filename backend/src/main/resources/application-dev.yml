@@ -23,7 +23,8 @@ server:
 app:
   jwt:
     secret: dev-only-secret-key-not-for-production-must-be-at-least-256-bits-long!!
-    expiration-ms: 86400000
+    # Matches prod so the refresh/rotation path actually gets exercised in dev.
+    expiration-ms: 900000
     refresh-expiration-ms: 604800000
   registration:
     enabled: true

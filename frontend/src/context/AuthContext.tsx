@@ -39,6 +39,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [handleAuthResponse]);
 
   const logout = useCallback(() => {
+    // Revoke the server-side session, but don't block the UI on it — the
+    // local session is cleared regardless, and the token expires server-side
+    // within 7 days even if this request never arrives.
+    const refreshToken = sessionStorage.getItem('refreshToken');
+    if (refreshToken) {
+      void authApi.logout(refreshToken).catch(() => {});
+    }
     sessionStorage.clear();
     setUser(null);
   }, []);
