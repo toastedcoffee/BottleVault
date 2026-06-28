@@ -20,7 +20,7 @@ class RefreshToken(
     @Column(name = "user_id", nullable = false)
     val userId: UUID,
 
-    @Column(name = "token_hash", nullable = false, unique = true)
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64)
     val tokenHash: String,
 
     @Column(name = "expires_at", nullable = false)
