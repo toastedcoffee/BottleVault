@@ -49,9 +49,13 @@ dependencies {
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testRuntimeOnly("com.h2database:h2")
 
-    // H2 for local dev without PostgreSQL
+    // Integration tests run Flyway against a real PostgreSQL via Testcontainers,
+    // matching the prod engine/version (postgres:16-alpine). Version is managed
+    // by the Spring Boot dependency BOM.
+    testImplementation("org.testcontainers:postgresql")
+
+    // H2 for local dev without PostgreSQL (application-dev profile only)
     runtimeOnly("com.h2database:h2")
 }
 
@@ -63,4 +67,27 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+
+    // Testcontainers locates the Docker daemon via a forked test worker, which
+    // does NOT inherit an interactive shell's DOCKER_HOST. On Windows, Docker
+    // Desktop's legacy //./pipe/docker_engine is a stub proxy that answers the
+    // daemon ping with HTTP 400, so Testcontainers' default npipe probe fails;
+    // the real Linux engine lives on //./pipe/dockerDesktopLinuxEngine (the
+    // active `desktop-linux` context). Point the worker at it explicitly. On
+    // Linux/macOS (incl. CI) the default unix-socket probe works, so leave the
+    // environment untouched and let Testcontainers auto-detect.
+    if (org.gradle.internal.os.OperatingSystem.current().isWindows
+        && System.getenv("DOCKER_HOST") == null
+    ) {
+        environment("DOCKER_HOST", "npipe:////./pipe/dockerDesktopLinuxEngine")
+    }
+
+    // Docker Engine 29 enforces a minimum API version of 1.40, but the
+    // docker-java client bundled with Testcontainers defaults to an older
+    // version, so the daemon rejects the connection ping with HTTP 400.
+    // docker-java reads the target version from the `api.version` system
+    // property; pin it to 1.40 — the floor Engine 29 requires and still within
+    // range for every daemon back to 19.03, so it doesn't break older Docker.
+    // Harmless on engines that already negotiate a compatible version.
+    systemProperty("api.version", "1.40")
 }
