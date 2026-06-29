@@ -1,16 +1,17 @@
+# Datasource connection details are supplied at runtime by the Testcontainers
+# PostgreSQL container (see AbstractPostgresIntegrationTest). Running against the
+# real prod engine (postgres:16-alpine) instead of H2 closes the fidelity gap
+# that previously let Postgres-specific bugs ship — bpchar-vs-varchar mismatches
+# and plpgsql DO-block parsing both passed under H2 but broke in production.
 spring:
-  datasource:
-    url: jdbc:h2:mem:bottlevault_test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
-
   jpa:
     hibernate:
-      ddl-auto: none
+      # validate (matching prod) so a Hibernate-entity-vs-schema mismatch fails
+      # the suite in CI instead of crashing SessionFactory startup in prod.
+      ddl-auto: validate
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.H2Dialect
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
   flyway:
     enabled: true
