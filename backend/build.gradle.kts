@@ -1,5 +1,5 @@
 plugins {
-    id("org.springframework.boot") version "3.4.3"
+    id("org.springframework.boot") version "3.4.13"
     id("io.spring.dependency-management") version "1.1.7"
     kotlin("jvm") version "2.3.21"
     kotlin("plugin.spring") version "2.3.21"
@@ -8,6 +8,28 @@ plugins {
 
 group = "com.bottlevault"
 version = "0.1.0"
+
+// CVE overrides on top of the Spring Boot 3.4.13 BOM. Each pins a transitive
+// dependency ABOVE the version the BOM manages, to close a confirmed, in-range
+// CVE. Verified against `./gradlew dependencies` (2026-07-01). Drop a pin once
+// the BOM manages a version at or above it.
+//   - spring-security: BOM ships 6.4.13. Covers CVE-2025-41248 (auth bypass,
+//     fixed 6.4.11) already, but CVE-2026-22732 (CVSS 8.6 security-header drop)
+//     has NO OSS fix on the 6.4.x line — 6.4.15 is Enterprise-only. 6.5.9 is the
+//     OSS fix. 6.5.x rides Spring Framework 6.2.x (BOM ships 6.2.15), so it is
+//     compatible with this Boot 3.4 line.
+//   - spring-framework: BOM ships 6.2.15, which already fixes CVE-2025-41249
+//     (>= 6.2.11). Pinned to 6.2.17 anyway so Security 6.5.9 runs on the exact
+//     Framework it was built and tested against (6.5.9 requests 6.2.17, which the
+//     BOM would otherwise force back down to 6.2.15) — makes the grafted security
+//     stack a coherent, Spring-tested pairing. 6.2.17 is a safe same-minor patch.
+//   - postgresql: BOM ships 42.7.8. CVE-2026-42198 (SCRAM-auth DoS) fixed 42.7.11.
+//   - commons-lang3: BOM caps to 3.17.0, which is vulnerable to CVE-2025-48924
+//     (recursion DoS). springdoc transitively requests 3.20.0; let it resolve.
+extra["spring-security.version"] = "6.5.9"
+extra["spring-framework.version"] = "6.2.17"
+extra["postgresql.version"] = "42.7.11"
+extra["commons-lang3.version"] = "3.20.0"
 
 java {
     toolchain {
@@ -42,7 +64,7 @@ dependencies {
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.13.0")
 
     // OpenAPI documentation
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.4")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17")
 
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
