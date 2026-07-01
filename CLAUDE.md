@@ -76,9 +76,3 @@ clone on the server**. Images come from GHCR
 TrueNAS: trigger the CI `workflow_dispatch` with a `tag` input, then point the
 Dockge stack at `:<tag>` instead of `:latest`. CI only overwrites `:latest`
 from `main`.
-
-## Repo hygiene
-
-`frontend/tsconfig.tsbuildinfo` is tracked but is a tsc incremental cache that
-regenerates on every build — don't stage it in commits (gitignoring it is a
-pending cleanup).
