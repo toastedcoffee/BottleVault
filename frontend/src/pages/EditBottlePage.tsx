@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   useBottle,
@@ -29,18 +29,24 @@ export default function EditBottlePage() {
   const [storageLocation, setStorageLocation] = useState('');
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (bottle) {
-      setStatus(bottle.status);
-      setPercentageLeft(bottle.percentageLeft);
-      setPurchaseDate(bottle.purchaseDate || '');
-      setPurchaseLocation(bottle.purchaseLocation || '');
-      setPurchaseCost(bottle.purchaseCost != null ? String(bottle.purchaseCost) : '');
-      setNotes(bottle.notes || '');
-      setRating(bottle.rating != null ? String(bottle.rating) : '');
-      setStorageLocation(bottle.storageLocation || '');
-    }
-  }, [bottle]);
+  // Populate the form from the fetched bottle when it first loads (and again if
+  // a different bottle id is loaded into this mounted component). Done during
+  // render — React's "adjust state when a value changes" pattern — instead of an
+  // effect, which avoids react-hooks/set-state-in-effect. Guarding on id (rather
+  // than the bottle object reference the old effect used) also means a
+  // background refetch of the same bottle no longer clobbers unsaved edits.
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  if (bottle && bottle.id !== loadedId) {
+    setLoadedId(bottle.id);
+    setStatus(bottle.status);
+    setPercentageLeft(bottle.percentageLeft);
+    setPurchaseDate(bottle.purchaseDate || '');
+    setPurchaseLocation(bottle.purchaseLocation || '');
+    setPurchaseCost(bottle.purchaseCost != null ? String(bottle.purchaseCost) : '');
+    setNotes(bottle.notes || '');
+    setRating(bottle.rating != null ? String(bottle.rating) : '');
+    setStorageLocation(bottle.storageLocation || '');
+  }
 
   if (isLoading) return <LoadingSpinner className="py-20" />;
   if (!bottle) return <div className="text-center py-20 text-gray-500">Bottle not found</div>;

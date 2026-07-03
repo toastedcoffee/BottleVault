@@ -23,6 +23,13 @@ export default function BottleImage({ bottleId, hasImage, className, alt }: Bott
 
   const [url, setUrl] = useState<string | null>(null);
 
+  // An object URL is an external browser resource that must be created and
+  // explicitly revoked, so this is a legitimate effect (exactly the "sync with
+  // an external system" case effects are for) rather than derived render state —
+  // there's no way to produce a revocable URL without setState here. The
+  // react-hooks/set-state-in-effect heuristic doesn't account for this, so it's
+  // scoped-disabled with intent.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!blob) {
       setUrl(null);
@@ -32,6 +39,7 @@ export default function BottleImage({ bottleId, hasImage, className, alt }: Bott
     setUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [blob]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (!hasImage || !url) {
     return (

@@ -1,25 +1,28 @@
-import { useState, useCallback, useEffect, type ReactNode } from 'react';
+import { useState, useCallback, type ReactNode } from 'react';
 import { authApi } from '../api/auth.api';
 import type { UserProfile, LoginRequest, RegisterRequest } from '../types/auth';
 import { AuthContext } from './auth-context';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    // Check for existing session on mount
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    // Restore an existing session synchronously on first render, so there's no
+    // flash of logged-out UI and no setState-in-effect on mount.
     const token = sessionStorage.getItem('accessToken');
     const savedUser = sessionStorage.getItem('user');
     if (token && savedUser) {
       try {
-        setUser(JSON.parse(savedUser));
+        return JSON.parse(savedUser) as UserProfile;
       } catch {
+        // Corrupt stored user — drop the whole session.
         sessionStorage.clear();
       }
     }
-    setIsLoading(false);
-  }, []);
+    return null;
+  });
+  // The session is read synchronously above, so there is no async bootstrap to
+  // wait on — auth state is already known on the first render. Kept in the
+  // context shape (always false) so consumers/route guards don't need changes.
+  const [isLoading] = useState(false);
 
   const handleAuthResponse = useCallback((accessToken: string, refreshToken: string, userProfile: UserProfile) => {
     sessionStorage.setItem('accessToken', accessToken);
