@@ -1,4 +1,4 @@
-FROM gradle:9.6.0-jdk21-alpine AS build
+FROM gradle:9.6.1-jdk21-alpine AS build
 WORKDIR /app
 COPY build.gradle.kts settings.gradle.kts gradle.properties ./
 COPY gradle ./gradle
