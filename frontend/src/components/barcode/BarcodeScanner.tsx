@@ -14,8 +14,12 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(true);
 
-  // Keep the callback ref current without restarting the scanner
-  onScanRef.current = onScan;
+  // Keep the callback ref current without restarting the scanner. Writing the
+  // ref in an effect (not the render body) satisfies react-hooks/refs while
+  // still updating before any scan callback fires.
+  useEffect(() => {
+    onScanRef.current = onScan;
+  });
 
   useEffect(() => {
     const scannerId = 'barcode-reader';

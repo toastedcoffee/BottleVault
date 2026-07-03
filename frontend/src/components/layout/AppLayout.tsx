@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/useAuth';
 import { Wine, LogOut, Plus, Menu, X, Settings, BarChart3 } from 'lucide-react';
@@ -8,9 +8,14 @@ export default function AppLayout() {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  useEffect(() => {
+  // Close the mobile menu on any route change. Done during render (React's
+  // "adjust state when a value changes" pattern) rather than in an effect —
+  // avoids react-hooks/set-state-in-effect and the extra commit an effect adds.
+  const [menuPath, setMenuPath] = useState(location.pathname);
+  if (menuPath !== location.pathname) {
+    setMenuPath(location.pathname);
     setMobileMenuOpen(false);
-  }, [location.pathname]);
+  }
 
   const navLinks = [
     { to: '/inventory', label: 'Inventory', icon: Wine },
