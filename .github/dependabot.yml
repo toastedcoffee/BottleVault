@@ -38,6 +38,14 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # foojay-resolver-convention 1.0.0 is not published to the Gradle Plugin
+      # Portal, so it can never resolve or merge (see the pin note in
+      # backend/settings.gradle.kts). Ignore only that exact version; a
+      # resolvable 1.0.1+ would still be proposed. Remove this once 1.0.0 is
+      # superseded upstream. Closed PR #46 without this rule reopened weekly.
+      - dependency-name: "org.gradle.toolchains.foojay-resolver-convention"
+        versions: ["1.0.0"]
 
   # Frontend container base image (nginx)
   - package-ecosystem: "docker"
