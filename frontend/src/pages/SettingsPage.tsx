@@ -75,7 +75,7 @@ export default function SettingsPage() {
       <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
 
       {/* Profile Section */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="bg-white rounded-lg shadow-xs border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile</h2>
 
         {profileSuccess && (
@@ -155,7 +155,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Password Section */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="bg-white rounded-lg shadow-xs border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Change Password</h2>
 
         {passwordSuccess && (

@@ -29,7 +29,7 @@ export default function BottleDetailPage() {
         Back to Inventory
       </button>
 
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-xs overflow-hidden">
         {bottle.imagePath && (
           <BottleImage
             bottleId={bottle.id}

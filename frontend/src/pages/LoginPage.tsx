@@ -44,7 +44,7 @@ export default function LoginPage() {
           <p className="mt-1 text-sm text-gray-500">Manage your bottle collection</p>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-lg shadow-xs border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
             {isRegistering ? 'Create Account' : 'Sign In'}
           </h2>
