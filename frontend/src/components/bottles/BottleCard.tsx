@@ -15,7 +15,7 @@ export default function BottleCard({ bottle, onDelete }: BottleCardProps) {
 
   return (
     <div
-      className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+      className="bg-white rounded-lg border border-gray-200 shadow-xs hover:shadow-md transition-shadow cursor-pointer"
       onClick={() => navigate(`/inventory/${bottle.id}`)}
     >
       <BottleImage
@@ -38,7 +38,7 @@ export default function BottleCard({ bottle, onDelete }: BottleCardProps) {
         </div>
 
         <div className="flex items-center gap-3 mt-3 text-xs text-gray-500">
-          <span className="inline-flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded">
+          <span className="inline-flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded-sm">
             {product.type.replace('_', ' ')}
           </span>
           {product.abv && (

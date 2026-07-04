@@ -113,7 +113,7 @@ export default function StatisticsPage() {
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Type Distribution Pie */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+        <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-4">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">Collection by Type</h2>
           {typeData.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
@@ -146,7 +146,7 @@ export default function StatisticsPage() {
         </div>
 
         {/* Status Breakdown Bar */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+        <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-4">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">Status Breakdown</h2>
           {statusData.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
@@ -169,7 +169,7 @@ export default function StatisticsPage() {
       </div>
 
       {/* Spending Over Time */}
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 mb-8">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-4 mb-8">
         <h2 className="text-sm font-semibold text-gray-900 mb-4">Spending Over Time</h2>
         {spendingData.length > 1 ? (
           <ResponsiveContainer width="100%" height={300}>
@@ -201,7 +201,7 @@ export default function StatisticsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Rated */}
         {data.topRatedBottles.length > 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+          <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-4">
             <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-1.5">
               <Star className="w-4 h-4 text-amber-500" />
               Top Rated
@@ -212,7 +212,7 @@ export default function StatisticsPage() {
 
         {/* Recent Additions */}
         {data.recentAdditions.length > 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+          <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-4">
             <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-1.5">
               <Clock className="w-4 h-4 text-primary-600" />
               Recently Added
@@ -227,7 +227,7 @@ export default function StatisticsPage() {
 
 function SummaryCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+    <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-4">
       <div className="flex items-center gap-2 mb-1">
         {icon}
         <span className="text-xs font-medium text-gray-500">{label}</span>
@@ -244,7 +244,7 @@ function BottleList({ bottles, showRating }: { bottles: BottleSummary[]; showRat
         <li key={b.id}>
           <Link
             to={`/inventory/${b.id}`}
-            className="flex items-center justify-between py-2.5 hover:bg-gray-50 -mx-2 px-2 rounded transition-colors"
+            className="flex items-center justify-between py-2.5 hover:bg-gray-50 -mx-2 px-2 rounded-sm transition-colors"
           >
             <div className="min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{b.productName}</p>
