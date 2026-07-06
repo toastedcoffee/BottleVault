@@ -114,7 +114,18 @@ class BottleVaultIntegrationTest : AbstractPostgresIntegrationTest() {
     @Test
     fun `cannot access bottles without authentication`() {
         mockMvc.perform(get("/api/bottles"))
-            .andExpect(status().isForbidden)
+            .andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `expired or invalid token yields 401 so clients know to refresh`() {
+        // The frontend refreshes the access token only on 401 — a 403 here
+        // would strand sessions once the short-lived access token expires.
+        mockMvc.perform(
+            get("/api/bottles")
+                .header("Authorization", "Bearer not-a-valid-token")
+        )
+            .andExpect(status().isUnauthorized)
     }
 
     @Test
@@ -201,7 +212,7 @@ class BottleVaultIntegrationTest : AbstractPostgresIntegrationTest() {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"displayName": "Hacker"}""")
         )
-            .andExpect(status().isForbidden)
+            .andExpect(status().isUnauthorized)
     }
 
     @Test
@@ -275,7 +286,7 @@ class BottleVaultIntegrationTest : AbstractPostgresIntegrationTest() {
     @Test
     fun `statistics requires authentication`() {
         mockMvc.perform(get("/api/statistics"))
-            .andExpect(status().isForbidden)
+            .andExpect(status().isUnauthorized)
     }
 
     @Test

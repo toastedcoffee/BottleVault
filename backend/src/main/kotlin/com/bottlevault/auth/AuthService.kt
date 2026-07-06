@@ -1,6 +1,7 @@
 package com.bottlevault.auth
 
 import com.bottlevault.auth.dto.*
+import com.bottlevault.common.exception.AccessDeniedException
 import com.bottlevault.common.exception.ResourceAlreadyExistsException
 import com.bottlevault.common.exception.ResourceNotFoundException
 import com.bottlevault.user.dto.ChangePasswordRequest
@@ -24,7 +25,9 @@ class AuthService(
     @Transactional
     fun register(request: RegisterRequest): AuthResponse {
         if (!registrationEnabled) {
-            throw IllegalStateException("Registration is currently disabled")
+            // AccessDeniedException maps to a clean 403 via GlobalExceptionHandler;
+            // IllegalStateException would fall through as an unhandled 500.
+            throw AccessDeniedException("Registration is currently disabled")
         }
         if (userRepository.existsByEmail(request.email)) {
             throw ResourceAlreadyExistsException("An account with this email already exists")
