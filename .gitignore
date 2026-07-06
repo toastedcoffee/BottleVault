@@ -34,3 +34,6 @@ data/
 Thumbs.db
 *.swp
 *.swo
+
+# Local-only reports (not for the public repo)
+DEPENDENCY_AUDIT.md
