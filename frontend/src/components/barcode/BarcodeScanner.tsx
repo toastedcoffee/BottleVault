@@ -87,7 +87,7 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex flex-col items-center justify-center">
       <div className="bg-white rounded-lg max-w-md w-full mx-4 overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <div className="flex items-center gap-2">
             <Camera className="w-5 h-5 text-primary-600" />
             <h3 className="font-semibold">Scan Barcode</h3>
