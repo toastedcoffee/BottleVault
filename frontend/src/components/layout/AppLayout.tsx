@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/useAuth';
 import { Wine, LogOut, Plus, Menu, X, Settings, BarChart3 } from 'lucide-react';
+import LoadingSpinner from '../common/LoadingSpinner';
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
@@ -116,7 +117,11 @@ export default function AppLayout() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Outlet />
+        {/* Single boundary for all lazy protected pages: the nav above stays
+            mounted, so only the content area shows a spinner (no white flash). */}
+        <Suspense fallback={<LoadingSpinner className="min-h-[50vh]" />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );

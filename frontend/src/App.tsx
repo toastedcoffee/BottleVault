@@ -4,16 +4,19 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/useAuth';
 import AppLayout from './components/layout/AppLayout';
-import LoginPage from './pages/LoginPage';
-import InventoryPage from './pages/InventoryPage';
-import AddBottlePage from './pages/AddBottlePage';
-import EditBottlePage from './pages/EditBottlePage';
-import BottleDetailPage from './pages/BottleDetailPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
+// Route pages are lazy-loaded so each becomes its own chunk instead of
+// bloating the entry bundle. AddBottlePage in particular kept html5-qrcode
+// (via BarcodeScanner) out of the main bundle only once it's lazy.
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const InventoryPage = lazy(() => import('./pages/InventoryPage'));
+const AddBottlePage = lazy(() => import('./pages/AddBottlePage'));
+const EditBottlePage = lazy(() => import('./pages/EditBottlePage'));
+const BottleDetailPage = lazy(() => import('./pages/BottleDetailPage'));
 const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
-import ErrorBoundary from './components/common/ErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,7 +43,15 @@ function AppRoutes() {
     <Routes>
       <Route
         path="/login"
-        element={isAuthenticated ? <Navigate to="/inventory" replace /> : <LoginPage />}
+        element={
+          isAuthenticated ? (
+            <Navigate to="/inventory" replace />
+          ) : (
+            <Suspense fallback={<LoadingSpinner className="min-h-screen" />}>
+              <LoginPage />
+            </Suspense>
+          )
+        }
       />
       <Route
         element={
@@ -53,8 +64,8 @@ function AppRoutes() {
         <Route path="/inventory/add" element={<AddBottlePage />} />
         <Route path="/inventory/:id" element={<BottleDetailPage />} />
         <Route path="/inventory/:id/edit" element={<EditBottlePage />} />
-        <Route path="/statistics" element={<Suspense fallback={<LoadingSpinner className="min-h-[50vh]" />}><StatisticsPage /></Suspense>} />
-        <Route path="/settings" element={<Suspense fallback={<LoadingSpinner className="min-h-[50vh]" />}><SettingsPage /></Suspense>} />
+        <Route path="/statistics" element={<StatisticsPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/inventory" replace />} />
     </Routes>

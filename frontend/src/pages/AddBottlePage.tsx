@@ -1,13 +1,17 @@
-import { useState, useCallback } from 'react';
+import { lazy, Suspense, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useBrands, useCreateBrand } from '../hooks/useBrands';
 import { useProducts, useCreateProduct } from '../hooks/useProducts';
 import { useCreateBottle, useUploadBottleImage } from '../hooks/useBottles';
 import { useBarcodeLookup } from '../hooks/useBarcode';
-import BarcodeScanner from '../components/barcode/BarcodeScanner';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 import type { BottleStatus } from '../types/bottle';
 import type { AlcoholType } from '../types/product';
 import { Camera, ArrowLeft, Plus } from 'lucide-react';
+
+// html5-qrcode is heavy and only needed once the user opens the scanner, so
+// BarcodeScanner is loaded on demand rather than bundled with this page.
+const BarcodeScanner = lazy(() => import('../components/barcode/BarcodeScanner'));
 
 const ALCOHOL_TYPES: AlcoholType[] = [
   'WHISKEY', 'BOURBON', 'SCOTCH', 'RYE', 'VODKA', 'GIN', 'RUM',
@@ -525,7 +529,15 @@ export default function AddBottlePage() {
       </form>
 
       {showScanner && (
-        <BarcodeScanner onScan={handleBarcodeScan} onClose={() => setShowScanner(false)} />
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          }
+        >
+          <BarcodeScanner onScan={handleBarcodeScan} onClose={() => setShowScanner(false)} />
+        </Suspense>
       )}
     </div>
   );
