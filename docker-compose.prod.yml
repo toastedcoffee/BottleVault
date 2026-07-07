@@ -7,7 +7,8 @@
 # Required environment variables (set in Dockge UI or .env file):
 #   DB_PASSWORD    — database password
 #   JWT_SECRET     — JWT signing key (generate with: openssl rand -base64 48)
-#   TUNNEL_TOKEN   — Cloudflare Tunnel token (from Zero Trust dashboard)
+#   TUNNEL_TOKEN   — Cloudflare Tunnel token (from Zero Trust dashboard);
+#                    LAN-only? Delete the tunnel service block instead of setting this
 #
 # Optional environment variables (sensible defaults):
 #   REGISTRATION_ENABLED — allow new user registration (default: true)
@@ -22,7 +23,7 @@ services:
     environment:
       POSTGRES_DB: bottlevault
       POSTGRES_USER: bottlevault
-      POSTGRES_PASSWORD: $DB_PASSWORD
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
     # Bind mount keeps data visible on the host for ZFS snapshots / backups.
     # On TrueNAS with Dockge this resolves to /mnt/<pool>/configs/stacks/bottlevault/data/postgres
     volumes:
@@ -43,16 +44,20 @@ services:
     environment:
       DATABASE_URL: jdbc:postgresql://postgres:5432/bottlevault
       DATABASE_USERNAME: bottlevault
-      DATABASE_PASSWORD: $DB_PASSWORD
-      JWT_SECRET: $JWT_SECRET
+      DATABASE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
       # Set to false after creating your account to lock down self-registration
-      REGISTRATION_ENABLED: true
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
       # Swagger UI is disabled in prod by default — also blocked at nginx as defense in depth
-      SWAGGER_ENABLED: false
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
       # Comma-separated allowed origins for CORS on /api/**.
       # Example: https://cellar.bottlevault.app
       # Multiple: https://cellar.bottlevault.app,https://bottlevault.app
-      # Required when the frontend is accessed via Cloudflare Tunnel or any non-localhost URL.
+      # Required for Cloudflare Tunnel / any public https hostname (the browser's
+      # https origin never matches the backend's http origin, so those requests
+      # are always CORS-checked). Plain-http LAN access needs no entry here —
+      # nginx forwards the Host header with its port intact, so the backend sees
+      # those requests as same-origin.
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       UPLOADS_DIR: /app/uploads
     # Bottle photos live on the host so ZFS snapshots back them up alongside the DB.
@@ -78,7 +83,7 @@ services:
     container_name: bottlevault-web
     # The only service bound to a host port — serves the React app and proxies /api/ to backend
     ports:
-      - 3312:80
+      - "${PORT:-80}:80"
     depends_on:
       backend:
         condition: service_healthy
@@ -86,13 +91,15 @@ services:
 
   # Cloudflare Tunnel — outbound connection to Cloudflare's edge, no ports opened on the host.
   # Routes traffic from your public hostname to http://frontend:80 (configured in CF dashboard).
-  # Remove this service if deploying LAN-only without external access.
+  # Remove this service if deploying LAN-only without external access — compose
+  # validates TUNNEL_TOKEN below even if you never start this service, so
+  # LAN-only deployments must delete the whole block.
   tunnel:
     image: cloudflare/cloudflared:latest
     container_name: bottlevault-tunnel
     command: tunnel run
     environment:
-      TUNNEL_TOKEN: $TUNNEL_TOKEN
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set TUNNEL_TOKEN from the Cloudflare Zero Trust dashboard, or remove the tunnel service for LAN-only}
     depends_on:
       frontend:
         condition: service_started

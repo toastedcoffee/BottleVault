@@ -43,15 +43,17 @@ The app starts three containers:
 **Backend (requires JDK 21):**
 
 ```bash
-# Start dev database
-docker compose -f docker-compose.dev.yml up -d
-
-# Run backend
 cd backend
-./gradlew bootRun
+./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
 
-**Frontend (requires Node.js 22):**
+The `dev` profile runs on port 8085 with an in-memory H2 database — no
+containers needed. To develop against real Postgres instead, start the dev
+database (`docker compose -f docker-compose.dev.yml up -d`) and run the
+default profile with `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`,
+and `JWT_SECRET` set.
+
+**Frontend (requires Node.js 26):**
 
 ```bash
 cd frontend
@@ -59,7 +61,8 @@ npm install
 npm run dev
 ```
 
-The Vite dev server proxies `/api` requests to `localhost:8080`.
+The Vite dev server proxies `/api` requests to `localhost:8085` (override with
+`API_PORT` if your backend runs elsewhere).
 
 ### LAN Deployment with Dockge (TrueNAS SCALE / home server)
 
@@ -70,6 +73,11 @@ Pre-built images are published to GitHub Container Registry on every merge to ma
 3. **Set environment variables** in Dockge's UI:
    - `DB_PASSWORD` — any strong password
    - `JWT_SECRET` — generate with `openssl rand -base64 48`
+   - `TUNNEL_TOKEN` — from the Cloudflare Zero Trust dashboard. Deploying
+     LAN-only? Delete the `tunnel` service block from the paste instead —
+     the compose file refuses to deploy without this variable otherwise.
+   - `ALLOWED_ORIGINS` — your public https URL(s) when using the tunnel
+     (e.g. `https://app.example.com`); not needed for plain LAN access
    - `REGISTRATION_ENABLED` — `true` (change to `false` after creating your account)
    - `PORT` — (optional, default `80`)
 4. **Create the data directories** from TrueNAS shell:
