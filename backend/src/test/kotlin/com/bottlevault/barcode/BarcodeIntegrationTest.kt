@@ -8,13 +8,13 @@ import com.bottlevault.barcode.providers.BarcodeLookupProvider
 import com.bottlevault.barcode.providers.OpenFoodFactsProvider
 import com.bottlevault.barcode.providers.UpcItemDbProvider
 import com.bottlevault.support.AbstractPostgresIntegrationTest
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.ObjectMapper
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mockito
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean

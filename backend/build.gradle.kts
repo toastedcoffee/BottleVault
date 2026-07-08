@@ -1,5 +1,5 @@
 plugins {
-    id("org.springframework.boot") version "3.4.13"
+    id("org.springframework.boot") version "4.1.0"
     id("io.spring.dependency-management") version "1.1.7"
     kotlin("jvm") version "2.4.0"
     kotlin("plugin.spring") version "2.4.0"
@@ -8,28 +8,6 @@ plugins {
 
 group = "com.bottlevault"
 version = "0.1.0"
-
-// CVE overrides on top of the Spring Boot 3.4.13 BOM. Each pins a transitive
-// dependency ABOVE the version the BOM manages, to close a confirmed, in-range
-// CVE. Verified against `./gradlew dependencies` (2026-07-01). Drop a pin once
-// the BOM manages a version at or above it.
-//   - spring-security: BOM ships 6.4.13. Covers CVE-2025-41248 (auth bypass,
-//     fixed 6.4.11) already, but CVE-2026-22732 (CVSS 8.6 security-header drop)
-//     has NO OSS fix on the 6.4.x line — 6.4.15 is Enterprise-only. 6.5.9 is the
-//     OSS fix. 6.5.x rides Spring Framework 6.2.x (BOM ships 6.2.15), so it is
-//     compatible with this Boot 3.4 line.
-//   - spring-framework: BOM ships 6.2.15, which already fixes CVE-2025-41249
-//     (>= 6.2.11). Pinned to 6.2.17 anyway so Security 6.5.9 runs on the exact
-//     Framework it was built and tested against (6.5.9 requests 6.2.17, which the
-//     BOM would otherwise force back down to 6.2.15) — makes the grafted security
-//     stack a coherent, Spring-tested pairing. 6.2.17 is a safe same-minor patch.
-//   - postgresql: BOM ships 42.7.8. CVE-2026-42198 (SCRAM-auth DoS) fixed 42.7.11.
-//   - commons-lang3: BOM caps to 3.17.0, which is vulnerable to CVE-2025-48924
-//     (recursion DoS). springdoc transitively requests 3.20.0; let it resolve.
-extra["spring-security.version"] = "6.5.9"
-extra["spring-framework.version"] = "6.2.17"
-extra["postgresql.version"] = "42.7.11"
-extra["commons-lang3.version"] = "3.20.0"
 
 java {
     toolchain {
@@ -43,19 +21,23 @@ repositories {
 
 dependencies {
     // Spring Boot
-    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
 
     // Kotlin
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 
     // Database
     runtimeOnly("org.postgresql:postgresql")
-    implementation("org.flywaydb:flyway-core")
+    // Boot 4 extracted DB-migration auto-config into a dedicated module: a bare
+    // flyway-core dependency no longer triggers it, so use the starter (brings
+    // flyway-core + spring-boot-flyway autoconfigure). Postgres support still needs
+    // the flyway-database-postgresql module explicitly on Flyway 12.
+    implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.flywaydb:flyway-database-postgresql")
 
     // JWT
@@ -64,10 +46,13 @@ dependencies {
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.13.0")
 
     // OpenAPI documentation
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3")
 
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    // Boot 4 modularized the test starters: spring-boot-starter-test no longer
+    // bundles the MockMvc slice (@AutoConfigureMockMvc / @WebMvcTest). Add it explicitly.
+    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -75,7 +60,7 @@ dependencies {
     // Integration tests run Flyway against a real PostgreSQL via Testcontainers,
     // matching the prod engine/version (postgres:16-alpine). Version is managed
     // by the Spring Boot dependency BOM.
-    testImplementation("org.testcontainers:postgresql")
+    testImplementation("org.testcontainers:testcontainers-postgresql")
 
     // H2 for local dev without PostgreSQL (application-dev profile only)
     runtimeOnly("com.h2database:h2")
