@@ -35,7 +35,9 @@ class AuthService(
 
         val user = User(
             email = request.email,
-            passwordHash = passwordEncoder.encode(request.password),
+            // Spring Security 7 annotates PasswordEncoder.encode as @Nullable; BCrypt
+            // never returns null, so assert non-null rather than propagate nullability.
+            passwordHash = passwordEncoder.encode(request.password)!!,
             displayName = request.displayName
         )
         val savedUser = userRepository.save(user)
@@ -102,7 +104,7 @@ class AuthService(
             throw IllegalArgumentException("Current password is incorrect")
         }
 
-        user.passwordHash = passwordEncoder.encode(request.newPassword)
+        user.passwordHash = passwordEncoder.encode(request.newPassword)!!
         user.updatedAt = Instant.now()
         userRepository.save(user)
 

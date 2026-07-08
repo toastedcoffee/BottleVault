@@ -3,7 +3,7 @@ package com.bottlevault.support
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.postgresql.PostgreSQLContainer
 
 /**
  * Base class for integration tests that boot the Spring context.
@@ -27,7 +27,7 @@ abstract class AbstractPostgresIntegrationTest {
 
     companion object {
         @JvmStatic
-        private val postgres: PostgreSQLContainer<*> =
+        private val postgres: PostgreSQLContainer =
             PostgreSQLContainer("postgres:16-alpine").apply { start() }
 
         @JvmStatic

@@ -21,8 +21,9 @@ spring:
     locations: classpath:db/migration
 
   jackson:
-    serialization:
-      write-dates-as-timestamps: false
+    # WRITE_DATES_AS_TIMESTAMPS is disabled in JacksonConfig via Jackson 3's
+    # DateTimeFeature; the old spring.jackson.serialization key no longer binds
+    # because Jackson 3 moved that feature out of SerializationFeature.
     default-property-inclusion: non_null
 
   servlet:
