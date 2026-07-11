@@ -122,6 +122,44 @@ describe('form population', () => {
   });
 });
 
+describe('fill slider', () => {
+  it('shows a precise pour-derived value exactly instead of snapping the thumb', () => {
+    mockBottleQuery(makeBottle({ percentageLeft: 56 }));
+    render(ui());
+
+    // No `step` forcing the thumb to a 10% multiple - 56 rests at 56.
+    expect(screen.getByRole('slider')).toHaveValue('56');
+    expect(screen.getByText('Remaining (56%)')).toBeInTheDocument();
+  });
+
+  it('snaps a drag to the nearest 10% and submits the snapped value', async () => {
+    mockBottleQuery(makeBottle({ percentageLeft: 56 }));
+    render(ui());
+
+    fireEvent.change(screen.getByRole('slider'), { target: { value: '57' } });
+
+    expect(screen.getByRole('slider')).toHaveValue('60');
+    expect(screen.getByText('Remaining (60%)')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    expect(await screen.findByText('Inventory list route')).toBeInTheDocument();
+    expect(updateMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ percentageLeft: 60 }) })
+    );
+  });
+
+  it('preserves a precise value when the slider is left untouched', async () => {
+    mockBottleQuery(makeBottle({ percentageLeft: 56 }));
+    render(ui());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    expect(await screen.findByText('Inventory list route')).toBeInTheDocument();
+    expect(updateMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ percentageLeft: 56 }) })
+    );
+  });
+});
+
 describe('id guard', () => {
   it('does not clobber unsaved edits when the same bottle refetches in the background', () => {
     mockBottleQuery(makeBottle());

@@ -168,12 +168,19 @@ export default function EditBottlePage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Remaining ({percentageLeft}%)
               </label>
+              {/*
+                Dragging snaps to 10% (manual level is an eyeball estimate), but
+                the thumb can still rest on any value so a precise figure from a
+                logged pour (e.g. 56%) shows where it actually is instead of
+                jumping to the nearest step. Snapping lives in onChange, not the
+                `step` attribute, which would force the thumb off the real value.
+              */}
               <input
                 type="range"
                 min="0"
                 max="100"
                 value={percentageLeft}
-                onChange={(e) => setPercentageLeft(Number(e.target.value))}
+                onChange={(e) => setPercentageLeft(Math.round(Number(e.target.value) / 10) * 10)}
                 className="w-full mt-2"
               />
             </div>

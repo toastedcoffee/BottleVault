@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useBottle, useDeleteBottle } from '../hooks/useBottles';
 import StatusBadge from '../components/bottles/StatusBadge';
 import BottleImage from '../components/bottles/BottleImage';
+import LogPour from '../components/bottles/LogPour';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { ArrowLeft, Edit, Trash2, Star, MapPin, DollarSign, Calendar } from 'lucide-react';
@@ -103,6 +104,8 @@ export default function BottleDetailPage() {
               </div>
             )}
           </div>
+
+          <LogPour key={bottle.id} bottle={bottle} />
 
           <div className="mt-6 space-y-3">
             {bottle.purchaseCost && (
