@@ -15,7 +15,7 @@ export default function BottleCard({ bottle, onDelete }: BottleCardProps) {
 
   return (
     <div
-      className="bg-white rounded-lg border border-gray-200 shadow-xs hover:shadow-md transition-shadow cursor-pointer"
+      className="bg-surface rounded-lg border border-border hover:border-primary/40 hover:bg-surface-2 transition-colors cursor-pointer"
       onClick={() => navigate(`/inventory/${bottle.id}`)}
     >
       <BottleImage
@@ -27,18 +27,18 @@ export default function BottleCard({ bottle, onDelete }: BottleCardProps) {
       <div className="p-4">
         <div className="flex justify-between items-start mb-2">
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-primary-600 uppercase tracking-wide truncate">
+            <p className="text-xs font-medium text-primary-bright uppercase tracking-wide truncate">
               {product.brand.name}
             </p>
-            <h3 className="text-sm font-semibold text-gray-900 mt-0.5 truncate">
+            <h3 className="text-sm font-semibold text-text-hi mt-0.5 truncate">
               {product.name}
             </h3>
           </div>
           <StatusDropdown bottleId={bottle.id} currentStatus={bottle.status} />
         </div>
 
-        <div className="flex items-center gap-3 mt-3 text-xs text-gray-500">
-          <span className="inline-flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded-sm">
+        <div className="flex items-center gap-3 mt-3 text-xs text-text-mid">
+          <span className="inline-flex items-center gap-1 bg-surface-2 border border-border px-2 py-0.5 rounded-sm">
             {product.type.replace('_', ' ')}
           </span>
           {product.abv && (
@@ -49,10 +49,10 @@ export default function BottleCard({ bottle, onDelete }: BottleCardProps) {
           )}
         </div>
 
-        <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
+        <div className="flex items-center gap-4 mt-3 text-xs text-text-mid">
           {bottle.rating && (
             <span className="flex items-center gap-0.5">
-              <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+              <Star className="w-3 h-3 text-gold fill-gold" />
               {bottle.rating}/5
             </span>
           )}
@@ -71,13 +71,13 @@ export default function BottleCard({ bottle, onDelete }: BottleCardProps) {
         </div>
       </div>
 
-      <div className="border-t border-gray-100 px-4 py-1 flex justify-between items-center">
+      <div className="border-t border-border px-4 py-1 flex justify-between items-center">
         <button
           onClick={(e) => {
             e.stopPropagation();
             navigate(`/inventory/${bottle.id}/edit`);
           }}
-          className="text-xs text-primary-600 hover:text-primary-800 font-medium min-h-[44px] px-2 flex items-center"
+          className="text-xs text-text-mid hover:text-text-hi font-medium min-h-[44px] px-2 flex items-center"
         >
           Edit
         </button>
@@ -86,7 +86,7 @@ export default function BottleCard({ bottle, onDelete }: BottleCardProps) {
             e.stopPropagation();
             onDelete(bottle.id);
           }}
-          className="text-xs text-red-500 hover:text-red-700 font-medium min-h-[44px] px-2 flex items-center"
+          className="text-xs text-primary-bright hover:text-primary font-medium min-h-[44px] px-2 flex items-center"
         >
           Delete
         </button>

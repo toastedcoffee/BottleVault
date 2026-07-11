@@ -44,7 +44,7 @@ export default function BottleImage({ bottleId, hasImage, className, alt }: Bott
   if (!hasImage || !url) {
     return (
       <div
-        className={`flex items-center justify-center bg-gray-100 text-gray-400 ${className ?? ''}`}
+        className={`flex items-center justify-center bg-surface-2 text-text-low ${className ?? ''}`}
       >
         <Wine className="w-1/3 h-1/3" />
       </div>

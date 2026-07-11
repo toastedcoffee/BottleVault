@@ -86,13 +86,13 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex flex-col items-center justify-center">
-      <div className="bg-white rounded-lg max-w-md w-full mx-4 overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+      <div className="bg-surface border border-border rounded-lg max-w-md w-full mx-4 overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <Camera className="w-5 h-5 text-primary-600" />
-            <h3 className="font-semibold">Scan Barcode</h3>
+            <Camera className="w-5 h-5 text-primary-bright" />
+            <h3 className="font-semibold text-text-hi">Scan Barcode</h3>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
+          <button onClick={onClose} className="text-text-low hover:text-text-hi p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -100,10 +100,10 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
         <div className="p-4">
           {error ? (
             <div className="text-center py-8">
-              <p className="text-sm text-red-600">{error}</p>
+              <p className="text-sm text-primary-bright">{error}</p>
               <button
                 onClick={onClose}
-                className="mt-4 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                className="mt-4 px-4 py-2 text-sm font-medium text-text-mid bg-transparent border border-border rounded-md hover:bg-surface-2 hover:text-text-hi"
               >
                 Close
               </button>
@@ -112,7 +112,7 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
             <>
               {starting && (
                 <div className="text-center py-4">
-                  <p className="text-sm text-gray-500">Starting camera...</p>
+                  <p className="text-sm text-text-mid">Starting camera...</p>
                 </div>
               )}
               <div
@@ -121,7 +121,7 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
               />
             </>
           )}
-          <p className="text-xs text-gray-500 text-center mt-3">
+          <p className="text-xs text-text-mid text-center mt-3">
             Point your camera at a barcode on the bottle
           </p>
         </div>

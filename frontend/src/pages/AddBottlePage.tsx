@@ -195,35 +195,35 @@ export default function AddBottlePage() {
     <div className="max-w-2xl mx-auto">
       <button
         onClick={() => navigate('/inventory')}
-        className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 mb-4"
+        className="flex items-center gap-1 text-sm text-text-mid hover:text-text-hi mb-4"
       >
         <ArrowLeft className="w-4 h-4" />
         Back to Inventory
       </button>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Add Bottle</h1>
+      <h1 className="text-2xl font-bold text-text-hi mb-6">Add Bottle</h1>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">{error}</div>
+        <div className="mb-4 p-3 bg-primary/10 border border-primary/40 rounded-md text-sm text-primary-bright">{error}</div>
       )}
 
       {/* Barcode Scanner Button */}
-      <div className="mb-6 p-4 bg-primary-50 border border-primary-200 rounded-lg">
+      <div className="mb-6 p-4 bg-primary/10 border border-primary/30 rounded-lg">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="font-medium text-primary-900">Quick Add with Barcode</h3>
-            <p className="text-sm text-primary-700 mt-0.5">Scan the barcode to auto-fill product details</p>
+            <h3 className="font-medium text-text-hi">Quick Add with Barcode</h3>
+            <p className="text-sm text-text-mid mt-0.5">Scan the barcode to auto-fill product details</p>
           </div>
           <button
             onClick={() => setShowScanner(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700"
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary text-sm font-medium rounded-md hover:bg-primary-bright"
           >
             <Camera className="w-4 h-4" />
             Scan
           </button>
         </div>
         {scanResult && (
-          <p className="text-xs text-primary-600 mt-2">
+          <p className="text-xs text-primary-bright mt-2">
             Scanned: {scanResult}
             {barcodeLookup.isPending && ' - Looking up...'}
             {barcodeLookup.isSuccess && barcodeLookup.data.found && ' - Found!'}
@@ -234,17 +234,17 @@ export default function AddBottlePage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Product Selection */}
-        <fieldset className="border border-gray-200 rounded-lg p-4">
-          <legend className="text-sm font-semibold text-gray-700 px-2">Product</legend>
+        <fieldset className="border border-border rounded-lg p-4">
+          <legend className="text-sm font-semibold text-text-hi px-2">Product</legend>
 
           {!isCreatingProduct ? (
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                <label className="block text-sm font-medium text-text-mid mb-1">Brand</label>
                 <select
                   value={selectedBrandId}
                   onChange={(e) => { setSelectedBrandId(e.target.value); setSelectedProductId(''); }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                 >
                   <option value="">Select a brand...</option>
                   {brands?.map((b) => (
@@ -255,11 +255,11 @@ export default function AddBottlePage() {
 
               {selectedBrandId && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Product</label>
+                  <label className="block text-sm font-medium text-text-mid mb-1">Product</label>
                   <select
                     value={selectedProductId}
                     onChange={(e) => setSelectedProductId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                   >
                     <option value="">Select a product...</option>
                     {products?.map((p) => (
@@ -274,7 +274,7 @@ export default function AddBottlePage() {
               <button
                 type="button"
                 onClick={() => setIsCreatingProduct(true)}
-                className="flex items-center gap-1 text-sm text-primary-600 hover:text-primary-800"
+                className="flex items-center gap-1 text-sm text-primary-bright hover:text-primary"
               >
                 <Plus className="w-3 h-3" />
                 Add new product
@@ -285,11 +285,11 @@ export default function AddBottlePage() {
               {/* Brand selection or creation */}
               {!isCreatingBrand ? (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                  <label className="block text-sm font-medium text-text-mid mb-1">Brand</label>
                   <select
                     value={selectedBrandId}
                     onChange={(e) => setSelectedBrandId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                   >
                     <option value="">Select a brand...</option>
                     {brands?.map((b) => (
@@ -299,7 +299,7 @@ export default function AddBottlePage() {
                   <button
                     type="button"
                     onClick={() => setIsCreatingBrand(true)}
-                    className="flex items-center gap-1 mt-1 text-sm text-primary-600 hover:text-primary-800"
+                    className="flex items-center gap-1 mt-1 text-sm text-primary-bright hover:text-primary"
                   >
                     <Plus className="w-3 h-3" />
                     Add new brand
@@ -307,25 +307,25 @@ export default function AddBottlePage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">New Brand</label>
+                  <label className="block text-sm font-medium text-text-mid">New Brand</label>
                   <input
                     type="text"
                     value={newBrandName}
                     onChange={(e) => setNewBrandName(e.target.value)}
                     placeholder="Brand name"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                   />
                   <input
                     type="text"
                     value={newBrandCountry}
                     onChange={(e) => setNewBrandCountry(e.target.value)}
                     placeholder="Country (optional)"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                   />
                   <button
                     type="button"
                     onClick={() => { setIsCreatingBrand(false); setNewBrandName(''); }}
-                    className="text-sm text-gray-500 hover:text-gray-700"
+                    className="text-sm text-text-mid hover:text-text-hi"
                   >
                     Cancel - select existing brand
                   </button>
@@ -335,21 +335,21 @@ export default function AddBottlePage() {
               {/* New product fields */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
+                  <label className="block text-sm font-medium text-text-mid mb-1">Product Name</label>
                   <input
                     type="text"
                     value={newProductName}
                     onChange={(e) => setNewProductName(e.target.value)}
                     placeholder="e.g. 12 Year Old Sherry Oak"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                  <label className="block text-sm font-medium text-text-mid mb-1">Type</label>
                   <select
                     value={newProductType}
                     onChange={(e) => setNewProductType(e.target.value as AlcoholType)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                   >
                     {ALCOHOL_TYPES.map((t) => (
                       <option key={t} value={t}>{t.replace('_', ' ')}</option>
@@ -357,44 +357,44 @@ export default function AddBottlePage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Subtype</label>
+                  <label className="block text-sm font-medium text-text-mid mb-1">Subtype</label>
                   <input
                     type="text"
                     value={newProductSubtype}
                     onChange={(e) => setNewProductSubtype(e.target.value)}
                     placeholder="e.g. Single Malt Scotch"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Size</label>
+                  <label className="block text-sm font-medium text-text-mid mb-1">Size</label>
                   <input
                     type="text"
                     value={newProductSize}
                     onChange={(e) => setNewProductSize(e.target.value)}
                     placeholder="750ml"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ABV %</label>
+                  <label className="block text-sm font-medium text-text-mid mb-1">ABV %</label>
                   <input
                     type="number"
                     step="0.1"
                     value={newProductAbv}
                     onChange={(e) => setNewProductAbv(e.target.value)}
                     placeholder="40.0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Barcode</label>
+                  <label className="block text-sm font-medium text-text-mid mb-1">Barcode</label>
                   <input
                     type="text"
                     value={newProductBarcode}
                     onChange={(e) => setNewProductBarcode(e.target.value)}
                     placeholder="UPC/EAN barcode"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                   />
                 </div>
               </div>
@@ -402,7 +402,7 @@ export default function AddBottlePage() {
               <button
                 type="button"
                 onClick={() => { setIsCreatingProduct(false); setNewProductName(''); }}
-                className="text-sm text-gray-500 hover:text-gray-700"
+                className="text-sm text-text-mid hover:text-text-hi"
               >
                 Cancel - select existing product
               </button>
@@ -411,15 +411,15 @@ export default function AddBottlePage() {
         </fieldset>
 
         {/* Bottle Details */}
-        <fieldset className="border border-gray-200 rounded-lg p-4">
-          <legend className="text-sm font-semibold text-gray-700 px-2">Bottle Details</legend>
+        <fieldset className="border border-border rounded-lg p-4">
+          <legend className="text-sm font-semibold text-text-hi px-2">Bottle Details</legend>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Status</label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as BottleStatus)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               >
                 <option value="UNOPENED">Unopened</option>
                 <option value="OPENED">Opened</option>
@@ -427,11 +427,11 @@ export default function AddBottlePage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Rating</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Rating</label>
               <select
                 value={rating}
                 onChange={(e) => setRating(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               >
                 <option value="">No rating</option>
                 {[1, 2, 3, 4, 5].map((r) => (
@@ -440,69 +440,69 @@ export default function AddBottlePage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Date</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Purchase Date</label>
               <input
                 type="date"
                 value={purchaseDate}
                 onChange={(e) => setPurchaseDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Cost</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Purchase Cost</label>
               <input
                 type="number"
                 step="0.01"
                 value={purchaseCost}
                 onChange={(e) => setPurchaseCost(e.target.value)}
                 placeholder="0.00"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Location</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Purchase Location</label>
               <input
                 type="text"
                 value={purchaseLocation}
                 onChange={(e) => setPurchaseLocation(e.target.value)}
                 placeholder="Where did you buy it?"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Storage Location</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Storage Location</label>
               <input
                 type="text"
                 value={storageLocation}
                 onChange={(e) => setStorageLocation(e.target.value)}
                 placeholder="e.g. Bar cabinet, Wine cellar"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Notes</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
                 placeholder="Tasting notes, thoughts..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Photo</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Photo</label>
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 onChange={handleImageChange}
-                className="w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-sm file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                className="w-full text-sm text-text-mid file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-sm file:bg-primary/15 file:text-primary-bright hover:file:bg-primary/25"
               />
-              <p className="text-xs text-gray-500 mt-1">JPEG, PNG, or WebP. Max 5 MB.</p>
+              <p className="text-xs text-text-mid mt-1">JPEG, PNG, or WebP. Max 5 MB.</p>
               {imagePreview && (
                 <img
                   src={imagePreview}
                   alt="Preview"
-                  className="mt-2 w-32 h-32 object-cover rounded-md border border-gray-200"
+                  className="mt-2 w-32 h-32 object-cover rounded-md border border-border"
                 />
               )}
             </div>
@@ -514,14 +514,14 @@ export default function AddBottlePage() {
           <button
             type="button"
             onClick={() => navigate('/inventory')}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            className="px-4 py-2 text-sm font-medium text-text-mid bg-transparent border border-border rounded-md hover:bg-surface-2 hover:text-text-hi"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={isSaving}
-            className="px-6 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 disabled:opacity-50"
+            className="px-6 py-2 bg-primary text-on-primary text-sm font-medium rounded-md hover:bg-primary-bright disabled:opacity-50"
           >
             {isSaving ? 'Saving...' : 'Add to Collection'}
           </button>

@@ -4,9 +4,9 @@ import { useUpdateBottleStatus } from '../../hooks/useBottles';
 import type { BottleStatus } from '../../types/bottle';
 
 const statusOptions: { value: BottleStatus; label: string; classes: string }[] = [
-  { value: 'UNOPENED', label: 'Unopened', classes: 'bg-green-100 text-green-800' },
-  { value: 'OPENED', label: 'Opened', classes: 'bg-amber-100 text-amber-800' },
-  { value: 'EMPTY', label: 'Empty', classes: 'bg-gray-100 text-gray-600' },
+  { value: 'UNOPENED', label: 'Unopened', classes: 'bg-white/[0.06] text-text-hi border border-border' },
+  { value: 'OPENED', label: 'Opened', classes: 'bg-status-opened/15 text-status-opened border border-status-opened/40' },
+  { value: 'EMPTY', label: 'Empty', classes: 'bg-white/[0.04] text-text-mid border border-border' },
 ];
 
 interface StatusDropdownProps {
@@ -52,7 +52,7 @@ export default function StatusDropdown({ bottleId, currentStatus }: StatusDropdo
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10 min-w-[130px]">
+        <div className="absolute right-0 top-full mt-1 bg-surface rounded-lg shadow-lg border border-border py-1 z-10 min-w-[130px]">
           {statusOptions.map((option) => (
             <button
               key={option.value}
@@ -63,13 +63,13 @@ export default function StatusDropdown({ bottleId, currentStatus }: StatusDropdo
                 }
                 setOpen(false);
               }}
-              className="flex items-center justify-between w-full px-3 py-2 text-sm hover:bg-gray-50 transition-colors"
+              className="flex items-center justify-between w-full px-3 py-2 text-sm hover:bg-surface-2 transition-colors"
             >
               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${option.classes}`}>
                 {option.label}
               </span>
               {option.value === currentStatus && (
-                <Check className="w-4 h-4 text-primary-600" />
+                <Check className="w-4 h-4 text-primary-bright" />
               )}
             </button>
           ))}

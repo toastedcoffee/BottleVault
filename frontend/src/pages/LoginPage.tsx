@@ -36,21 +36,23 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-bg to-bg-2 px-4">
       <div className="max-w-sm w-full">
         <div className="text-center mb-8">
-          <Wine className="w-12 h-12 text-primary-600 mx-auto" />
-          <h1 className="mt-4 text-2xl font-bold text-gray-900">BottleVault</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage your bottle collection</p>
+          <Wine className="w-12 h-12 text-primary mx-auto" />
+          <h1 className="mt-4 text-2xl font-bold">
+            <span className="text-text-hi">Bottle</span><span className="text-primary-bright">Vault</span>
+          </h1>
+          <p className="mt-1 text-sm text-text-mid">Manage your bottle collection</p>
         </div>
 
-        <div className="bg-white rounded-lg shadow-xs border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className="bg-surface rounded-lg border border-border p-6">
+          <h2 className="text-lg font-semibold text-text-hi mb-4">
             {isRegistering ? 'Create Account' : 'Sign In'}
           </h2>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+            <div className="mb-4 p-3 bg-primary/10 border border-primary/40 rounded-md text-sm text-primary-bright">
               {error}
             </div>
           )}
@@ -58,38 +60,38 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {isRegistering && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
+                <label className="block text-sm font-medium text-text-mid mb-1">Display Name</label>
                 <input
                   type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                   placeholder="Your name"
                 />
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Email</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                 placeholder="you@example.com"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Password</label>
               <input
                 type="password"
                 required
                 minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
                 placeholder={isRegistering ? 'At least 8 characters' : 'Your password'}
               />
             </div>
@@ -97,7 +99,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2 px-4 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-2 px-4 bg-primary text-on-primary text-sm font-medium rounded-md hover:bg-primary-bright disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Please wait...' : isRegistering ? 'Create Account' : 'Sign In'}
             </button>
@@ -106,7 +108,7 @@ export default function LoginPage() {
           <div className="mt-4 text-center">
             <button
               onClick={() => { setIsRegistering(!isRegistering); setError(''); }}
-              className="text-sm text-primary-600 hover:text-primary-800"
+              className="text-sm text-primary-bright hover:text-primary"
             >
               {isRegistering ? 'Already have an account? Sign in' : "Don't have an account? Register"}
             </button>

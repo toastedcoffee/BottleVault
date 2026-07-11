@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useAuth } from '../context/useAuth';
 import { useUpdateProfile, useChangePassword } from '../hooks/useUser';
 
-const inputClasses = 'w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500';
-const labelClasses = 'block text-sm font-medium text-gray-700 mb-1';
-const buttonClasses = 'py-2 px-4 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+const inputClasses = 'w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright';
+const labelClasses = 'block text-sm font-medium text-text-mid mb-1';
+const buttonClasses = 'py-2 px-4 bg-primary text-on-primary text-sm font-medium rounded-md hover:bg-primary-bright disabled:opacity-50 disabled:cursor-not-allowed';
 
 function getErrorMessage(err: unknown): string {
   if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -72,19 +72,19 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
-      <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+      <h1 className="text-2xl font-bold text-text-hi">Settings</h1>
 
       {/* Profile Section */}
-      <div className="bg-white rounded-lg shadow-xs border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile</h2>
+      <div className="bg-surface rounded-lg border border-border p-6">
+        <h2 className="text-lg font-semibold text-text-hi mb-4">Profile</h2>
 
         {profileSuccess && (
-          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md text-sm text-green-700">
+          <div className="mb-4 p-3 bg-gold/10 border border-gold/40 rounded-md text-sm text-gold">
             Profile updated successfully.
           </div>
         )}
         {profileError && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+          <div className="mb-4 p-3 bg-primary/10 border border-primary/40 rounded-md text-sm text-primary-bright">
             {profileError}
           </div>
         )}
@@ -96,7 +96,7 @@ export default function SettingsPage() {
               type="email"
               value={user?.email || ''}
               disabled
-              className={`${inputClasses} bg-gray-50 text-gray-500 cursor-not-allowed`}
+              className={`${inputClasses} bg-surface-2 text-text-low cursor-not-allowed`}
             />
           </div>
 
@@ -155,16 +155,16 @@ export default function SettingsPage() {
       </div>
 
       {/* Password Section */}
-      <div className="bg-white rounded-lg shadow-xs border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Change Password</h2>
+      <div className="bg-surface rounded-lg border border-border p-6">
+        <h2 className="text-lg font-semibold text-text-hi mb-4">Change Password</h2>
 
         {passwordSuccess && (
-          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md text-sm text-green-700">
+          <div className="mb-4 p-3 bg-gold/10 border border-gold/40 rounded-md text-sm text-gold">
             Password updated successfully.
           </div>
         )}
         {passwordError && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+          <div className="mb-4 p-3 bg-primary/10 border border-primary/40 rounded-md text-sm text-primary-bright">
             {passwordError}
           </div>
         )}

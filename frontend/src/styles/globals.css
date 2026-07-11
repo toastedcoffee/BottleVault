@@ -1,19 +1,49 @@
 @import 'tailwindcss';
 
+/* Deep Pour theme — wine-dark surfaces, pour-red accent, gold highlights.
+   Shared source of truth with the marketing site (bottlevault.app). If the two
+   drift, the palette hexes below are canonical — keep them identical so the
+   properties read as one product. App uses opaque surfaces (not the site's
+   translucent glass) because this is a dense data-entry UI. */
 @theme {
-  --color-primary-50: #f0f5ff;
-  --color-primary-100: #e0eaff;
-  --color-primary-200: #c7d7fe;
-  --color-primary-300: #a4bcfd;
-  --color-primary-400: #8098f9;
-  --color-primary-500: #6172f3;
-  --color-primary-600: #444ce7;
-  --color-primary-700: #3538cd;
-  --color-primary-800: #2d31a6;
-  --color-primary-900: #2b2f83;
+  /* Wine-dark surfaces */
+  --color-bg:             #17070E;   /* app chrome / page base (flat) */
+  --color-bg-2:           #2E0F1F;   /* deeper panels / gradient partner */
+  --color-surface:        #24121B;   /* raised card fill (opaque) */
+  --color-surface-2:      #2E1822;   /* hover / nested card */
+  --color-border:         #3A2530;   /* opaque border on dark */
+
+  /* Accent — pour red */
+  --color-primary:        #E0483E;   /* primary actions, active states */
+  --color-primary-bright: #FF6B5E;   /* hover, focus ring, large accents */
+  --color-on-primary:     #2A0705;   /* text on a pour-red fill */
+  --color-gold:           #D9A441;   /* stars, small highlights, success */
+
+  /* Text */
+  --color-text-hi:        #FBF3F0;
+  --color-text-mid:       #C9AFB3;
+  --color-text-low:       #8E7078;
+
+  /* Status (existing app semantics, recolored) */
+  --color-status-opened:   #FF6B5E;  /* opened   → pour-bright */
+  --color-status-unopened: #C9AFB3;  /* unopened → muted */
+  --color-status-low:      #D9A441;  /* running low → gold */
+  --color-status-empty:    #8E7078;  /* empty */
+}
+
+html {
+  /* Render native controls (scrollbars, date pickers, select menus, the range
+     thumb) in their dark variants so they don't flash light-on-dark. */
+  color-scheme: dark;
 }
 
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  @apply bg-bg text-text-mid antialiased;
   font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Visible keyboard focus across the app (matches the marketing site). */
+:focus-visible {
+  outline: 2px solid var(--color-primary-bright);
+  outline-offset: 2px;
 }

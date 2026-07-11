@@ -26,14 +26,14 @@ export default function AppLayout() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b border-gray-200 shadow-xs">
+    <div className="min-h-screen bg-bg">
+      <nav className="bg-bg border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-8">
-              <Link to="/inventory" className="flex items-center gap-2 text-xl font-bold text-primary-700">
-                <Wine className="w-6 h-6" />
-                BottleVault
+              <Link to="/inventory" className="flex items-center gap-2 text-xl font-bold">
+                <Wine className="w-6 h-6 text-primary" />
+                <span className="text-text-hi">Bottle</span><span className="text-primary-bright">Vault</span>
               </Link>
               <div className="hidden sm:flex gap-1">
                 {navLinks.map((link) => {
@@ -45,8 +45,8 @@ export default function AppLayout() {
                       to={link.to}
                       className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                         isActive
-                          ? 'bg-primary-50 text-primary-700'
-                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                          ? 'bg-primary/15 text-primary-bright'
+                          : 'text-text-mid hover:text-text-hi hover:bg-surface'
                       }`}
                     >
                       <Icon className="w-4 h-4" />
@@ -57,19 +57,19 @@ export default function AppLayout() {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <span className="hidden sm:inline text-sm text-gray-500">
+              <span className="hidden sm:inline text-sm text-text-mid">
                 {user?.displayName || user?.email}
               </span>
               <button
                 onClick={logout}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 rounded-md hover:bg-gray-50 transition-colors"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-sm text-text-mid hover:text-text-hi rounded-md hover:bg-surface transition-colors"
               >
                 <LogOut className="w-4 h-4" />
                 Logout
               </button>
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="sm:hidden flex items-center justify-center min-w-[44px] min-h-[44px] text-gray-600 hover:text-gray-900 rounded-md hover:bg-gray-50 transition-colors"
+                className="sm:hidden flex items-center justify-center min-w-[44px] min-h-[44px] text-text-mid hover:text-text-hi rounded-md hover:bg-surface transition-colors"
                 aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
               >
                 {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -79,7 +79,7 @@ export default function AppLayout() {
         </div>
 
         {mobileMenuOpen && (
-          <div className="sm:hidden border-t border-gray-200 bg-white shadow-md">
+          <div className="sm:hidden border-t border-border bg-surface">
             <div className="px-4 py-2 space-y-1">
               {navLinks.map((link) => {
                 const Icon = link.icon;
@@ -90,8 +90,8 @@ export default function AppLayout() {
                     to={link.to}
                     className={`flex items-center gap-2 px-3 py-3 rounded-md text-sm font-medium min-h-[44px] transition-colors ${
                       isActive
-                        ? 'bg-primary-50 text-primary-700'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                        ? 'bg-primary/15 text-primary-bright'
+                        : 'text-text-mid hover:text-text-hi hover:bg-surface-2'
                     }`}
                   >
                     <Icon className="w-5 h-5" />
@@ -100,13 +100,13 @@ export default function AppLayout() {
                 );
               })}
             </div>
-            <div className="border-t border-gray-200 px-4 py-3">
-              <p className="text-sm text-gray-500 mb-2">
+            <div className="border-t border-border px-4 py-3">
+              <p className="text-sm text-text-mid mb-2">
                 {user?.displayName || user?.email}
               </p>
               <button
                 onClick={logout}
-                className="flex items-center gap-2 w-full px-3 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-md hover:bg-gray-50 min-h-[44px] transition-colors"
+                className="flex items-center gap-2 w-full px-3 py-3 text-sm font-medium text-text-mid hover:text-text-hi rounded-md hover:bg-surface-2 min-h-[44px] transition-colors"
               >
                 <LogOut className="w-5 h-5" />
                 Logout

@@ -30,20 +30,20 @@ export default function BottleFilters({
   return (
     <div className="flex flex-col sm:flex-row gap-3">
       <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-low" />
         <input
           type="text"
           placeholder="Search bottles..."
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 min-h-[44px] border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          className="w-full pl-9 pr-4 py-2 min-h-[44px] bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
         />
       </div>
 
       <select
         value={status}
         onChange={(e) => onStatusChange(e.target.value as BottleStatus | '')}
-        className="px-3 py-2 min-h-[44px] border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500"
+        className="px-3 py-2 min-h-[44px] bg-surface border border-border rounded-md text-sm text-text-hi focus:outline-none focus:ring-2 focus:ring-primary-bright"
       >
         {STATUSES.map((s) => (
           <option key={s.value} value={s.value}>{s.label}</option>
@@ -53,7 +53,7 @@ export default function BottleFilters({
       <select
         value={type}
         onChange={(e) => onTypeChange(e.target.value)}
-        className="px-3 py-2 min-h-[44px] border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500"
+        className="px-3 py-2 min-h-[44px] bg-surface border border-border rounded-md text-sm text-text-hi focus:outline-none focus:ring-2 focus:ring-primary-bright"
       >
         <option value="">All Types</option>
         {TYPES.filter(Boolean).map((t) => (
