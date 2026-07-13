@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="BottleVault">
+  <!-- BottleVault favicon: pour-gauge bottle mark on a wine-dark rounded-square. The bottle is
+       widened relative to its true aspect ratio so the silhouette survives at 16px (a browser
+       tab icon renders this SVG scaled into a square slot; the mark's native ~24:95 aspect is
+       too slender to read at that size, so the horizontal scale is boosted independently of the
+       vertical scale for legibility, while the vertical proportions of the shoulder/neck taper
+       are preserved). Self-contained, no external references. -->
+  <rect width="32" height="32" rx="7" fill="#17070E"/>
+  <defs>
+    <clipPath id="bv-favicon-clip">
+      <path d="M15 3 H25 V20 C25 20 32 26 32 34 V90 C32 95 28 98 23 98 H17 C12 98 8 95 8 90 V34 C8 26 15 20 15 20 Z"/>
+    </clipPath>
+  </defs>
+  <g transform="translate(6,3.375) scale(0.5,0.25)" clip-path="url(#bv-favicon-clip)">
+    <rect x="0" y="0" width="40" height="100" fill="#C9AFB3"/>
+    <rect x="0" y="38" width="40" height="62" fill="#E0483E"/>
+  </g>
+</svg>
