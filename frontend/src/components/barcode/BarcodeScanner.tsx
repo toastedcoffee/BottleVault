@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Camera, X } from 'lucide-react';
+import InlineError from '../common/InlineError';
 
 interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
@@ -100,7 +101,7 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
         <div className="p-4">
           {error ? (
             <div className="text-center py-8">
-              <p className="text-sm text-primary-bright">{error}</p>
+              <InlineError>{error}</InlineError>
               <button
                 onClick={onClose}
                 className="mt-4 px-4 py-2 text-sm font-medium text-text-mid bg-transparent border border-border rounded-md hover:bg-surface-2 hover:text-text-hi"

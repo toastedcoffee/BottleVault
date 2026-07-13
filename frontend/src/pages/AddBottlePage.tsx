@@ -5,6 +5,7 @@ import { useProducts, useCreateProduct } from '../hooks/useProducts';
 import { useCreateBottle, useUploadBottleImage } from '../hooks/useBottles';
 import { useBarcodeLookup } from '../hooks/useBarcode';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import InlineError from '../components/common/InlineError';
 import type { BottleStatus } from '../types/bottle';
 import type { AlcoholType } from '../types/product';
 import { Camera, ArrowLeft, Plus } from 'lucide-react';
@@ -204,7 +205,7 @@ export default function AddBottlePage() {
       <h1 className="text-2xl font-bold text-text-hi mb-6">Add Bottle</h1>
 
       {error && (
-        <div className="mb-4 p-3 bg-primary/10 border border-primary/40 rounded-md text-sm text-primary-bright">{error}</div>
+        <InlineError className="mb-4">{error}</InlineError>
       )}
 
       {/* Barcode Scanner Button */}

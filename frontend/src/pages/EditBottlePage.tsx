@@ -8,6 +8,7 @@ import {
 } from '../hooks/useBottles';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import BottleImage from '../components/bottles/BottleImage';
+import InlineError from '../components/common/InlineError';
 import type { BottleStatus } from '../types/bottle';
 import { ArrowLeft, Trash2 } from 'lucide-react';
 
@@ -113,7 +114,7 @@ export default function EditBottlePage() {
       </p>
 
       {error && (
-        <div className="mb-4 p-3 bg-primary/10 border border-primary/40 rounded-md text-sm text-primary-bright">{error}</div>
+        <InlineError className="mb-4">{error}</InlineError>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
