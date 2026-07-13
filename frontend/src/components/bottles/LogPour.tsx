@@ -23,7 +23,7 @@ export default function LogPour({ bottle }: LogPourProps) {
 
   if (bottle.percentageLeft === 0) {
     return (
-      <div className="mt-6 bg-gray-50 rounded-lg p-4 text-sm text-gray-500">
+      <div className="mt-6 bg-surface-2 border border-border rounded-lg p-4 text-sm text-text-mid">
         This bottle is empty - no pours left to log.
       </div>
     );
@@ -31,7 +31,7 @@ export default function LogPour({ bottle }: LogPourProps) {
 
   if (sizeMl === null) {
     return (
-      <div className="mt-6 bg-gray-50 rounded-lg p-4 text-sm text-gray-500">
+      <div className="mt-6 bg-surface-2 border border-border rounded-lg p-4 text-sm text-text-mid">
         Add a bottle size (like 750ml) to the product to log pours.
       </div>
     );
@@ -50,14 +50,14 @@ export default function LogPour({ bottle }: LogPourProps) {
   };
 
   return (
-    <div className="mt-6 bg-gray-50 rounded-lg p-4">
-      <p className="text-xs text-gray-500 mb-2">Log a pour</p>
+    <div className="mt-6 bg-surface-2 border border-border rounded-lg p-4">
+      <p className="text-xs text-text-mid mb-2">Log a pour</p>
       <div className="flex flex-wrap items-center gap-2">
         <select
           aria-label="Pour size"
           value={String(pourOz)}
           onChange={(e) => setPourOz(Number(e.target.value))}
-          className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white"
+          className="bg-surface border border-border rounded-md px-2 py-1.5 text-sm text-text-hi focus:outline-none focus:ring-2 focus:ring-primary-bright"
         >
           {POUR_OPTIONS.map((opt) => (
             <option key={opt.oz} value={String(opt.oz)}>
@@ -68,17 +68,17 @@ export default function LogPour({ bottle }: LogPourProps) {
         <button
           onClick={logPour}
           disabled={updateMutation.isPending}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm text-white bg-primary-600 rounded-md hover:bg-primary-700 disabled:opacity-50"
+          className="flex items-center gap-1 px-3 py-1.5 text-sm text-on-primary bg-primary rounded-md hover:bg-primary-bright disabled:opacity-50"
         >
           <Wine className="w-3.5 h-3.5" />
           {updateMutation.isPending ? 'Logging...' : 'Log pour'}
         </button>
-        <span aria-live="polite" className="text-sm text-gray-600">
+        <span aria-live="polite" className="text-sm text-text-mid">
           {next === 0 ? 'Finishes the bottle' : `Leaves ${next}%`}
         </span>
       </div>
       {updateMutation.isError && (
-        <p role="alert" className="mt-2 text-sm text-red-600">Failed to log pour. Try again.</p>
+        <p role="alert" className="mt-2 text-sm text-primary-bright">Failed to log pour. Try again.</p>
       )}
     </div>
   );

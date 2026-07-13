@@ -10,16 +10,30 @@ import {
 } from 'recharts';
 import type { BottleSummary } from '../types/statistics';
 
+// Deep Pour chart palette — warm wine/autumn tones that read on the dark bg.
 const PIE_COLORS = [
-  '#7c3aed', '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
-  '#8b5cf6', '#06b6d4', '#84cc16', '#f97316', '#ec4899',
+  '#E0483E', '#D9A441', '#FF6B5E', '#B5838D', '#E8985E',
+  '#A56A8C', '#C9724E', '#6FA8A0', '#8E7078', '#D98A6A',
 ];
 
+// Status chart fills mirror the status tokens (opened → pour-bright, etc.).
 const STATUS_COLORS: Record<string, string> = {
-  UNOPENED: '#22c55e',
-  OPENED: '#f59e0b',
-  EMPTY: '#9ca3af',
+  UNOPENED: '#C9AFB3',
+  OPENED: '#FF6B5E',
+  EMPTY: '#8E7078',
 };
+
+// Shared recharts theming for the dark surface.
+const AXIS_TICK = { fill: '#C9AFB3', fontSize: 12 };
+const GRID_STROKE = '#3A2530';
+const TOOLTIP_STYLE = {
+  backgroundColor: '#24121B',
+  border: '1px solid #3A2530',
+  borderRadius: 8,
+  color: '#FBF3F0',
+};
+const TOOLTIP_ITEM = { color: '#C9AFB3' };
+const TOOLTIP_LABEL = { color: '#FBF3F0' };
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
@@ -50,7 +64,7 @@ export default function StatisticsPage() {
   if (!data || data.totalBottles === 0) {
     return (
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">Statistics</h1>
+        <h1 className="text-2xl font-bold text-text-hi mb-6">Statistics</h1>
         <EmptyState
           icon={Wine}
           title="No data yet"
@@ -74,37 +88,37 @@ export default function StatisticsPage() {
   const statusData = data.statusBreakdown.map((d) => ({
     name: d.status.charAt(0) + d.status.slice(1).toLowerCase(),
     count: d.count,
-    fill: STATUS_COLORS[d.status] || '#9ca3af',
+    fill: STATUS_COLORS[d.status] || '#8E7078',
   }));
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Statistics</h1>
+      <h1 className="text-2xl font-bold text-text-hi mb-6">Statistics</h1>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         <SummaryCard
-          icon={<Wine className="w-5 h-5 text-primary-600" />}
+          icon={<Wine className="w-5 h-5 text-primary-bright" />}
           label="Total Bottles"
           value={String(data.totalBottles)}
         />
         <SummaryCard
-          icon={<DollarSign className="w-5 h-5 text-green-600" />}
+          icon={<DollarSign className="w-5 h-5 text-gold" />}
           label="Collection Value"
           value={formatCurrency(data.totalValue)}
         />
         <SummaryCard
-          icon={<Calculator className="w-5 h-5 text-cyan-600" />}
+          icon={<Calculator className="w-5 h-5 text-text-mid" />}
           label="Avg Cost / Bottle"
           value={data.averageCost != null ? formatCurrency(data.averageCost) : 'N/A'}
         />
         <SummaryCard
-          icon={<Star className="w-5 h-5 text-amber-500" />}
+          icon={<Star className="w-5 h-5 text-gold" />}
           label="Avg Rating"
           value={data.averageRating ? `${data.averageRating}/5` : 'N/A'}
         />
         <SummaryCard
-          icon={<TrendingUp className="w-5 h-5 text-blue-600" />}
+          icon={<TrendingUp className="w-5 h-5 text-primary-bright" />}
           label="Opened"
           value={`${data.percentageOpened.toFixed(0)}%`}
         />
@@ -113,8 +127,8 @@ export default function StatisticsPage() {
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Type Distribution Pie */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-4">
-          <h2 className="text-sm font-semibold text-gray-900 mb-4">Collection by Type</h2>
+        <div className="bg-surface rounded-lg border border-border p-4">
+          <h2 className="text-sm font-semibold text-text-hi mb-4">Collection by Type</h2>
           {typeData.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
@@ -131,30 +145,41 @@ export default function StatisticsPage() {
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => [`${value} bottles`, '']} />
+                <Tooltip
+                  formatter={(value) => [`${value} bottles`, '']}
+                  contentStyle={TOOLTIP_STYLE}
+                  itemStyle={TOOLTIP_ITEM}
+                  labelStyle={TOOLTIP_LABEL}
+                />
                 <Legend
                   layout="vertical"
                   align="right"
                   verticalAlign="middle"
-                  wrapperStyle={{ fontSize: '12px' }}
+                  wrapperStyle={{ fontSize: '12px', color: '#C9AFB3' }}
                 />
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-sm text-gray-400 text-center py-12">No data</p>
+            <p className="text-sm text-text-mid text-center py-12">No data</p>
           )}
         </div>
 
         {/* Status Breakdown Bar */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-4">
-          <h2 className="text-sm font-semibold text-gray-900 mb-4">Status Breakdown</h2>
+        <div className="bg-surface rounded-lg border border-border p-4">
+          <h2 className="text-sm font-semibold text-text-hi mb-4">Status Breakdown</h2>
           {statusData.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={statusData} barSize={48}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(value) => [`${value} bottles`, '']} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={GRID_STROKE} />
+                <XAxis dataKey="name" tick={AXIS_TICK} stroke={GRID_STROKE} />
+                <YAxis allowDecimals={false} tick={AXIS_TICK} stroke={GRID_STROKE} />
+                <Tooltip
+                  formatter={(value) => [`${value} bottles`, '']}
+                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                  contentStyle={TOOLTIP_STYLE}
+                  itemStyle={TOOLTIP_ITEM}
+                  labelStyle={TOOLTIP_LABEL}
+                />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                   {statusData.map((entry, i) => (
                     <Cell key={i} fill={entry.fill} />
@@ -163,33 +188,38 @@ export default function StatisticsPage() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-sm text-gray-400 text-center py-12">No data</p>
+            <p className="text-sm text-text-mid text-center py-12">No data</p>
           )}
         </div>
       </div>
 
       {/* Spending Over Time */}
-      <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-4 mb-8">
-        <h2 className="text-sm font-semibold text-gray-900 mb-4">Spending Over Time</h2>
+      <div className="bg-surface rounded-lg border border-border p-4 mb-8">
+        <h2 className="text-sm font-semibold text-text-hi mb-4">Spending Over Time</h2>
         {spendingData.length > 1 ? (
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart data={spendingData}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-              <YAxis tickFormatter={(v) => `$${v}`} tick={{ fontSize: 12 }} />
-              <Tooltip formatter={(value) => [formatCurrency(value as number), 'Spent']} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={GRID_STROKE} />
+              <XAxis dataKey="label" tick={AXIS_TICK} stroke={GRID_STROKE} />
+              <YAxis tickFormatter={(v) => `$${v}`} tick={AXIS_TICK} stroke={GRID_STROKE} />
+              <Tooltip
+                formatter={(value) => [formatCurrency(value as number), 'Spent']}
+                contentStyle={TOOLTIP_STYLE}
+                itemStyle={TOOLTIP_ITEM}
+                labelStyle={TOOLTIP_LABEL}
+              />
               <Area
                 type="monotone"
                 dataKey="total"
-                stroke="#7c3aed"
-                fill="#7c3aed"
-                fillOpacity={0.15}
+                stroke="#E0483E"
+                fill="#E0483E"
+                fillOpacity={0.2}
                 strokeWidth={2}
               />
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <p className="text-sm text-gray-400 text-center py-12">
+          <p className="text-sm text-text-mid text-center py-12">
             {spendingData.length === 1
               ? `${formatCurrency(spendingData[0]!.total)} spent in ${spendingData[0]!.label}. Chart appears after multiple months of data.`
               : 'No purchase data recorded yet.'}
@@ -201,9 +231,9 @@ export default function StatisticsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Rated */}
         {data.topRatedBottles.length > 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-4">
-            <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-1.5">
-              <Star className="w-4 h-4 text-amber-500" />
+          <div className="bg-surface rounded-lg border border-border p-4">
+            <h2 className="text-sm font-semibold text-text-hi mb-3 flex items-center gap-1.5">
+              <Star className="w-4 h-4 text-gold" />
               Top Rated
             </h2>
             <BottleList bottles={data.topRatedBottles} showRating />
@@ -212,9 +242,9 @@ export default function StatisticsPage() {
 
         {/* Recent Additions */}
         {data.recentAdditions.length > 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-4">
-            <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-1.5">
-              <Clock className="w-4 h-4 text-primary-600" />
+          <div className="bg-surface rounded-lg border border-border p-4">
+            <h2 className="text-sm font-semibold text-text-hi mb-3 flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-primary-bright" />
               Recently Added
             </h2>
             <BottleList bottles={data.recentAdditions} />
@@ -227,38 +257,38 @@ export default function StatisticsPage() {
 
 function SummaryCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-4">
+    <div className="bg-surface rounded-lg border border-border p-4">
       <div className="flex items-center gap-2 mb-1">
         {icon}
-        <span className="text-xs font-medium text-gray-500">{label}</span>
+        <span className="text-xs font-medium text-text-mid">{label}</span>
       </div>
-      <p className="text-xl font-bold text-gray-900">{value}</p>
+      <p className="text-xl font-bold text-text-hi">{value}</p>
     </div>
   );
 }
 
 function BottleList({ bottles, showRating }: { bottles: BottleSummary[]; showRating?: boolean }) {
   return (
-    <ul className="divide-y divide-gray-100">
+    <ul className="divide-y divide-border">
       {bottles.map((b) => (
         <li key={b.id}>
           <Link
             to={`/inventory/${b.id}`}
-            className="flex items-center justify-between py-2.5 hover:bg-gray-50 -mx-2 px-2 rounded-sm transition-colors"
+            className="flex items-center justify-between py-2.5 hover:bg-surface-2 -mx-2 px-2 rounded-sm transition-colors"
           >
             <div className="min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{b.productName}</p>
-              <p className="text-xs text-gray-500">{b.brandName} &middot; {formatType(b.type)}</p>
+              <p className="text-sm font-medium text-text-hi truncate">{b.productName}</p>
+              <p className="text-xs text-text-mid">{b.brandName} &middot; {formatType(b.type)}</p>
             </div>
             <div className="text-right shrink-0 ml-3">
               {showRating && b.rating && (
-                <span className="flex items-center gap-0.5 text-sm font-medium text-amber-600">
-                  <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                <span className="flex items-center gap-0.5 text-sm font-medium text-gold">
+                  <Star className="w-3.5 h-3.5 fill-gold text-gold" />
                   {b.rating}/5
                 </span>
               )}
               {!showRating && b.purchaseCost && (
-                <span className="text-sm text-gray-600">{formatCurrency(b.purchaseCost)}</span>
+                <span className="text-sm text-text-mid">{formatCurrency(b.purchaseCost)}</span>
               )}
             </div>
           </Link>

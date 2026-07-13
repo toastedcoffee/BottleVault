@@ -1,10 +1,10 @@
 function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`bg-gray-200 rounded-sm animate-pulse ${className}`} />;
+  return <div className={`bg-surface-2 rounded-sm animate-pulse ${className}`} />;
 }
 
 function SkeletonCardItem() {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-xs">
+    <div className="bg-surface rounded-lg border border-border">
       <div className="p-4">
         <div className="flex justify-between items-start mb-2">
           <div className="flex-1 min-w-0">
@@ -26,7 +26,7 @@ function SkeletonCardItem() {
         </div>
       </div>
 
-      <div className="border-t border-gray-100 px-4 py-2 flex justify-between items-center">
+      <div className="border-t border-border px-4 py-2 flex justify-between items-center">
         <Skeleton className="h-4 w-8" />
         <Skeleton className="h-4 w-10" />
       </div>

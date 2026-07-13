@@ -49,7 +49,7 @@ export default function EditBottlePage() {
   }
 
   if (isLoading) return <LoadingSpinner className="py-20" />;
-  if (!bottle) return <div className="text-center py-20 text-gray-500">Bottle not found</div>;
+  if (!bottle) return <div className="text-center py-20 text-text-mid">Bottle not found</div>;
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -101,29 +101,29 @@ export default function EditBottlePage() {
     <div className="max-w-2xl mx-auto">
       <button
         onClick={() => navigate('/inventory')}
-        className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 mb-4"
+        className="flex items-center gap-1 text-sm text-text-mid hover:text-text-hi mb-4"
       >
         <ArrowLeft className="w-4 h-4" />
         Back to Inventory
       </button>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Edit Bottle</h1>
-      <p className="text-sm text-gray-500 mb-6">
+      <h1 className="text-2xl font-bold text-text-hi mb-2">Edit Bottle</h1>
+      <p className="text-sm text-text-mid mb-6">
         {bottle.product.brand.name} - {bottle.product.name}
       </p>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">{error}</div>
+        <div className="mb-4 p-3 bg-primary/10 border border-primary/40 rounded-md text-sm text-primary-bright">{error}</div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <fieldset className="border border-gray-200 rounded-lg p-4">
-          <legend className="text-sm font-semibold text-gray-700 px-2">Photo</legend>
+        <fieldset className="border border-border rounded-lg p-4">
+          <legend className="text-sm font-semibold text-text-hi px-2">Photo</legend>
           <div className="flex items-start gap-4">
             <BottleImage
               bottleId={bottle.id}
               hasImage={!!bottle.imagePath}
-              className="w-32 h-32 object-cover rounded-md border border-gray-200"
+              className="w-32 h-32 object-cover rounded-md border border-border"
             />
             <div className="flex-1 space-y-2">
               <input
@@ -131,15 +131,15 @@ export default function EditBottlePage() {
                 accept="image/jpeg,image/png,image/webp"
                 onChange={handleImageChange}
                 disabled={uploadImage.isPending}
-                className="w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-sm file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                className="w-full text-sm text-text-mid file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-sm file:bg-primary/15 file:text-primary-bright hover:file:bg-primary/25"
               />
-              <p className="text-xs text-gray-500">JPEG, PNG, or WebP. Max 5 MB.</p>
+              <p className="text-xs text-text-mid">JPEG, PNG, or WebP. Max 5 MB.</p>
               {bottle.imagePath && (
                 <button
                   type="button"
                   onClick={handleRemoveImage}
                   disabled={deleteImage.isPending}
-                  className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+                  className="flex items-center gap-1 text-xs text-text-mid hover:text-primary-bright disabled:opacity-50"
                 >
                   <Trash2 className="w-3 h-3" />
                   Remove photo
@@ -149,15 +149,15 @@ export default function EditBottlePage() {
           </div>
         </fieldset>
 
-        <fieldset className="border border-gray-200 rounded-lg p-4">
-          <legend className="text-sm font-semibold text-gray-700 px-2">Bottle Details</legend>
+        <fieldset className="border border-border rounded-lg p-4">
+          <legend className="text-sm font-semibold text-text-hi px-2">Bottle Details</legend>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Status</label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as BottleStatus)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               >
                 <option value="UNOPENED">Unopened</option>
                 <option value="OPENED">Opened</option>
@@ -165,7 +165,7 @@ export default function EditBottlePage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-text-mid mb-1">
                 Remaining ({percentageLeft}%)
               </label>
               {/*
@@ -181,15 +181,15 @@ export default function EditBottlePage() {
                 max="100"
                 value={percentageLeft}
                 onChange={(e) => setPercentageLeft(Math.round(Number(e.target.value) / 10) * 10)}
-                className="w-full mt-2"
+                className="w-full mt-2 accent-primary"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Rating</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Rating</label>
               <select
                 value={rating}
                 onChange={(e) => setRating(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               >
                 <option value="">No rating</option>
                 {[1, 2, 3, 4, 5].map((r) => (
@@ -198,50 +198,50 @@ export default function EditBottlePage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Date</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Purchase Date</label>
               <input
                 type="date"
                 value={purchaseDate}
                 onChange={(e) => setPurchaseDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Cost</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Purchase Cost</label>
               <input
                 type="number"
                 step="0.01"
                 value={purchaseCost}
                 onChange={(e) => setPurchaseCost(e.target.value)}
                 placeholder="0.00"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Location</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Purchase Location</label>
               <input
                 type="text"
                 value={purchaseLocation}
                 onChange={(e) => setPurchaseLocation(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Storage Location</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Storage Location</label>
               <input
                 type="text"
                 value={storageLocation}
                 onChange={(e) => setStorageLocation(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <label className="block text-sm font-medium text-text-mid mb-1">Notes</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
               />
             </div>
           </div>
@@ -251,14 +251,14 @@ export default function EditBottlePage() {
           <button
             type="button"
             onClick={() => navigate('/inventory')}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            className="px-4 py-2 text-sm font-medium text-text-mid bg-transparent border border-border rounded-md hover:bg-surface-2 hover:text-text-hi"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={updateBottle.isPending}
-            className="px-6 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 disabled:opacity-50"
+            className="px-6 py-2 bg-primary text-on-primary text-sm font-medium rounded-md hover:bg-primary-bright disabled:opacity-50"
           >
             {updateBottle.isPending ? 'Saving...' : 'Save Changes'}
           </button>

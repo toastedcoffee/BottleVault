@@ -1,9 +1,9 @@
 import type { BottleStatus } from '../../types/bottle';
 
 const statusConfig: Record<BottleStatus, { label: string; classes: string }> = {
-  UNOPENED: { label: 'Unopened', classes: 'bg-green-100 text-green-800' },
-  OPENED: { label: 'Opened', classes: 'bg-amber-100 text-amber-800' },
-  EMPTY: { label: 'Empty', classes: 'bg-gray-100 text-gray-600' },
+  UNOPENED: { label: 'Unopened', classes: 'bg-white/[0.06] text-text-hi border border-border' },
+  OPENED: { label: 'Opened', classes: 'bg-status-opened/15 text-status-opened border border-status-opened/40' },
+  EMPTY: { label: 'Empty', classes: 'bg-white/[0.04] text-text-mid border border-border' },
 };
 
 export default function StatusBadge({ status }: { status: BottleStatus }) {
