@@ -88,7 +88,7 @@ export default function StatisticsPage() {
   const statusData = data.statusBreakdown.map((d) => ({
     name: d.status.charAt(0) + d.status.slice(1).toLowerCase(),
     count: d.count,
-    fill: STATUS_COLORS[d.status] || '#9ca3af',
+    fill: STATUS_COLORS[d.status] || '#8E7078',
   }));
 
   return (
