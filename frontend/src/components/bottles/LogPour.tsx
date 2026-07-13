@@ -3,6 +3,7 @@ import { Wine } from 'lucide-react';
 import { useUpdateBottle } from '../../hooks/useBottles';
 import type { BottleResponse, BottleUpdateRequest } from '../../types/bottle';
 import { POUR_OPTIONS, defaultPourOz, parseSizeToMl, percentAfterPour } from '../../lib/pour';
+import InlineError from '../common/InlineError';
 
 interface LogPourProps {
   bottle: BottleResponse;
@@ -78,7 +79,7 @@ export default function LogPour({ bottle }: LogPourProps) {
         </span>
       </div>
       {updateMutation.isError && (
-        <p role="alert" className="mt-2 text-sm text-primary-bright">Failed to log pour. Try again.</p>
+        <InlineError className="mt-2">Failed to log pour. Try again.</InlineError>
       )}
     </div>
   );

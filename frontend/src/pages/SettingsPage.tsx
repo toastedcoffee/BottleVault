@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/useAuth';
 import { useUpdateProfile, useChangePassword } from '../hooks/useUser';
+import InlineError from '../components/common/InlineError';
 
 const inputClasses = 'w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright';
 const labelClasses = 'block text-sm font-medium text-text-mid mb-1';
@@ -84,9 +85,7 @@ export default function SettingsPage() {
           </div>
         )}
         {profileError && (
-          <div className="mb-4 p-3 bg-primary/10 border border-primary/40 rounded-md text-sm text-primary-bright">
-            {profileError}
-          </div>
+          <InlineError className="mb-4">{profileError}</InlineError>
         )}
 
         <form onSubmit={handleProfileSubmit} className="space-y-4">
@@ -164,9 +163,7 @@ export default function SettingsPage() {
           </div>
         )}
         {passwordError && (
-          <div className="mb-4 p-3 bg-primary/10 border border-primary/40 rounded-md text-sm text-primary-bright">
-            {passwordError}
-          </div>
+          <InlineError className="mb-4">{passwordError}</InlineError>
         )}
 
         <form onSubmit={handlePasswordSubmit} className="space-y-4">

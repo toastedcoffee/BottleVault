@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/useAuth';
 import { Wine } from 'lucide-react';
+import InlineError from '../components/common/InlineError';
 
 export default function LoginPage() {
   const { login, register } = useAuth();
@@ -52,9 +53,7 @@ export default function LoginPage() {
           </h2>
 
           {error && (
-            <div className="mb-4 p-3 bg-primary/10 border border-primary/40 rounded-md text-sm text-primary-bright">
-              {error}
-            </div>
+            <InlineError className="mb-4">{error}</InlineError>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
