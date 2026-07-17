@@ -62,7 +62,14 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
           () => {} // ignore scan failures (no barcode in frame)
         )
         .then(() => {
-          if (mounted) setStarting(false);
+          if (mounted) {
+            setStarting(false);
+          } else {
+            // Unmounted while the camera was still being acquired: the
+            // cleanup ran while state was still NOT_STARTED and had nothing
+            // to stop, so release the camera here instead.
+            scanner.stop().catch(() => {});
+          }
         })
         .catch((err) => {
           if (mounted) {

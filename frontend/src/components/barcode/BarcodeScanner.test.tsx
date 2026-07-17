@@ -3,7 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import BarcodeScanner from './BarcodeScanner';
 
 const mockScanner = vi.hoisted(() => ({
-  startBehavior: 'resolve' as 'resolve' | 'reject',
+  startBehavior: 'resolve' as 'resolve' | 'reject' | 'hang',
+  resolveStart: null as (() => void) | null,
   stopCalls: 0,
 }));
 
@@ -27,6 +28,17 @@ vi.mock('html5-qrcode', () => {
         return Promise.reject(
           new DOMException('Permission denied', 'NotAllowedError')
         );
+      }
+      if (mockScanner.startBehavior === 'hang') {
+        // Camera acquisition in flight: state stays NOT_STARTED (the real
+        // library's state transaction executes only on success) until the
+        // test resolves the start promise.
+        return new Promise((resolve) => {
+          mockScanner.resolveStart = () => {
+            this.state = Html5QrcodeScannerState.SCANNING;
+            resolve();
+          };
+        });
       }
       this.state = Html5QrcodeScannerState.SCANNING;
       return Promise.resolve();
@@ -55,6 +67,7 @@ vi.mock('html5-qrcode', () => {
 describe('BarcodeScanner', () => {
   beforeEach(() => {
     mockScanner.startBehavior = 'resolve';
+    mockScanner.resolveStart = null;
     mockScanner.stopCalls = 0;
   });
 
@@ -82,5 +95,24 @@ describe('BarcodeScanner', () => {
 
     unmount();
     expect(mockScanner.stopCalls).toBe(1);
+  });
+
+  it('releases the camera when unmounted while start is still pending', async () => {
+    mockScanner.startBehavior = 'hang';
+    const { unmount } = render(
+      <BarcodeScanner onScan={() => {}} onClose={() => {}} />
+    );
+
+    // Wait past the 100ms mount delay until start() has been called.
+    await waitFor(() => expect(mockScanner.resolveStart).not.toBeNull());
+
+    // Close the overlay before camera acquisition finishes: state is still
+    // NOT_STARTED, so cleanup must not call stop() (it would throw)...
+    expect(() => unmount()).not.toThrow();
+    expect(mockScanner.stopCalls).toBe(0);
+
+    // ...and when acquisition then succeeds, the camera must be released.
+    mockScanner.resolveStart!();
+    await waitFor(() => expect(mockScanner.stopCalls).toBe(1));
   });
 });
