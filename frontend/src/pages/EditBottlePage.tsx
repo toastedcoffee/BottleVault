@@ -108,7 +108,7 @@ export default function EditBottlePage() {
         Back to Inventory
       </button>
 
-      <h1 className="text-2xl font-bold text-text-hi mb-2">Edit Bottle</h1>
+      <h1 className="font-display text-2xl font-bold text-text-hi mb-2">Edit Bottle</h1>
       <p className="text-sm text-text-mid mb-6">
         {bottle.product.brand.name} - {bottle.product.name}
       </p>

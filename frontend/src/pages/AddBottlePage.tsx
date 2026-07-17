@@ -202,7 +202,7 @@ export default function AddBottlePage() {
         Back to Inventory
       </button>
 
-      <h1 className="text-2xl font-bold text-text-hi mb-6">Add Bottle</h1>
+      <h1 className="font-display text-2xl font-bold text-text-hi mb-6">Add Bottle</h1>
 
       {error && (
         <InlineError className="mb-4">{error}</InlineError>

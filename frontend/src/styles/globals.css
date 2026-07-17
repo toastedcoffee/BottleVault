@@ -1,34 +1,49 @@
 @import 'tailwindcss';
 
-/* Deep Pour theme — wine-dark surfaces, pour-red accent, gold highlights.
-   Shared source of truth with the marketing site (bottlevault.app). If the two
-   drift, the palette hexes below are canonical — keep them identical so the
-   properties read as one product. App uses opaque surfaces (not the site's
-   translucent glass) because this is a dense data-entry UI. */
-@theme {
-  /* Wine-dark surfaces */
-  --color-bg:             #17070E;   /* app chrome / page base (flat) */
-  --color-bg-2:           #2E0F1F;   /* deeper panels / gradient partner */
-  --color-surface:        #24121B;   /* raised card fill (opaque) */
-  --color-surface-2:      #2E1822;   /* hover / nested card */
-  --color-border:         #3A2530;   /* opaque border on dark */
+/* Self-hosted variable woff2 (matches bottlevault.app). Normal 400–700 only —
+   deliberately not italic, Inter, or Space Mono; body stays system-ui. */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/fraunces-var-normal-latin.woff2') format('woff2');
+}
 
-  /* Accent — pour red */
+/* The Label theme — wine-dark surfaces, pour-red accent, gold highlights.
+   Canonical palette is "The Label" in bottlevault-site's src/styles/global.css.
+   Keep shared hexes identical across repos so the properties read as one
+   product. App uses opaque surfaces (not the site's translucent glass)
+   because this is a dense data-entry UI. */
+@theme {
+  /* Wine-dark surfaces — "The Label" family */
+  --color-bg:             #120509;   /* was #17070E — site --bg-0, matches favicon bg */
+  --color-bg-2:           #2A0D1C;   /* was #2E0F1F — site --bg-1 */
+  --color-surface:        #200A14;   /* was #24121B — derived: bg→bg-2 mix, raised card */
+  --color-surface-2:      #301421;   /* was #2E1822 — derived: hover / nested */
+  --color-border:         #3C2130;   /* was #3A2530 — derived, same lightness */
+
+  /* Accent — pour red (unchanged) */
   --color-primary:        #E0483E;   /* primary actions, active states */
   --color-primary-bright: #FF6B5E;   /* hover, focus ring, large accents */
   --color-on-primary:     #2A0705;   /* text on a pour-red fill */
-  --color-gold:           #D9A441;   /* stars, small highlights, success */
+  --color-gold:           #C89B3C;   /* was #D9A441 — site --gold */
 
-  /* Text */
-  --color-text-hi:        #FBF3F0;
-  --color-text-mid:       #C9AFB3;
-  --color-text-low:       #8E7078;
+  /* Text — cream family */
+  --color-text-hi:        #F6EBDC;   /* was #FBF3F0 — the site's cream */
+  --color-text-mid:       #CDB0A4;   /* was #C9AFB3 */
+  --color-text-low:       #8E7068;   /* was #8E7078 */
 
-  /* Status (existing app semantics, recolored) */
-  --color-status-opened:   #FF6B5E;  /* opened   → pour-bright */
-  --color-status-unopened: #C9AFB3;  /* unopened → muted */
-  --color-status-low:      #D9A441;  /* running low → gold */
-  --color-status-empty:    #8E7078;  /* empty */
+  /* Status (same semantics, recolored to track their base tokens) */
+  --color-status-opened:   #FF6B5E;  /* unchanged */
+  --color-status-unopened: #CDB0A4;  /* was #C9AFB3 — tracks text-mid */
+  --color-status-low:      #C89B3C;  /* was #D9A441 — tracks gold */
+  --color-status-empty:    #8E7068;  /* was #8E7078 — tracks text-low */
+
+  /* Display serif — deliberately scarce: header wordmark, page titles, and
+     (via the detail page title) the bottle name. Not used for body text,
+     grid card titles, subheadings, or buttons. */
+  --font-display: 'Fraunces', Georgia, serif;
 }
 
 html {

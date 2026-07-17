@@ -10,30 +10,30 @@ import {
 } from 'recharts';
 import type { BottleSummary } from '../types/statistics';
 
-// Deep Pour chart palette — warm wine/autumn tones that read on the dark bg.
+// The Label chart palette — warm wine/autumn tones that read on the dark bg.
 const PIE_COLORS = [
-  '#E0483E', '#D9A441', '#FF6B5E', '#B5838D', '#E8985E',
-  '#A56A8C', '#C9724E', '#6FA8A0', '#8E7078', '#D98A6A',
+  '#E0483E', '#C89B3C', '#FF6B5E', '#B5838D', '#E8985E',
+  '#A56A8C', '#C9724E', '#6FA8A0', '#8E7068', '#D98A6A',
 ];
 
 // Status chart fills mirror the status tokens (opened → pour-bright, etc.).
 const STATUS_COLORS: Record<string, string> = {
-  UNOPENED: '#C9AFB3',
+  UNOPENED: '#CDB0A4',
   OPENED: '#FF6B5E',
-  EMPTY: '#8E7078',
+  EMPTY: '#8E7068',
 };
 
 // Shared recharts theming for the dark surface.
-const AXIS_TICK = { fill: '#C9AFB3', fontSize: 12 };
-const GRID_STROKE = '#3A2530';
+const AXIS_TICK = { fill: '#CDB0A4', fontSize: 12 };
+const GRID_STROKE = '#3C2130';
 const TOOLTIP_STYLE = {
-  backgroundColor: '#24121B',
-  border: '1px solid #3A2530',
+  backgroundColor: '#200A14',
+  border: '1px solid #3C2130',
   borderRadius: 8,
-  color: '#FBF3F0',
+  color: '#F6EBDC',
 };
-const TOOLTIP_ITEM = { color: '#C9AFB3' };
-const TOOLTIP_LABEL = { color: '#FBF3F0' };
+const TOOLTIP_ITEM = { color: '#CDB0A4' };
+const TOOLTIP_LABEL = { color: '#F6EBDC' };
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
@@ -64,7 +64,7 @@ export default function StatisticsPage() {
   if (!data || data.totalBottles === 0) {
     return (
       <div>
-        <h1 className="text-2xl font-bold text-text-hi mb-6">Statistics</h1>
+        <h1 className="font-display text-2xl font-bold text-text-hi mb-6">Statistics</h1>
         <EmptyState
           icon={Wine}
           title="No data yet"
@@ -88,12 +88,12 @@ export default function StatisticsPage() {
   const statusData = data.statusBreakdown.map((d) => ({
     name: d.status.charAt(0) + d.status.slice(1).toLowerCase(),
     count: d.count,
-    fill: STATUS_COLORS[d.status] || '#8E7078',
+    fill: STATUS_COLORS[d.status] || '#8E7068',
   }));
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-text-hi mb-6">Statistics</h1>
+      <h1 className="font-display text-2xl font-bold text-text-hi mb-6">Statistics</h1>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
@@ -155,7 +155,7 @@ export default function StatisticsPage() {
                   layout="vertical"
                   align="right"
                   verticalAlign="middle"
-                  wrapperStyle={{ fontSize: '12px', color: '#C9AFB3' }}
+                  wrapperStyle={{ fontSize: '12px', color: '#CDB0A4' }}
                 />
               </PieChart>
             </ResponsiveContainer>

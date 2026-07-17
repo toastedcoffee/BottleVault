@@ -39,7 +39,7 @@ export default function InventoryPage() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-text-hi">My Collection</h1>
+          <h1 className="font-display text-2xl font-bold text-text-hi">My Collection</h1>
           <p className="text-sm text-text-mid mt-1">
             {data ? `${data.totalElements} bottle${data.totalElements !== 1 ? 's' : ''}` : ''}
           </p>

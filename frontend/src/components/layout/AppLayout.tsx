@@ -31,9 +31,11 @@ export default function AppLayout() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-8">
-              <Link to="/inventory" className="flex items-center gap-2 text-xl font-bold">
+              <Link to="/inventory" className="flex items-center gap-2">
                 <Wine className="w-6 h-6 text-primary" />
-                <span className="text-text-hi">Bottle</span><span className="text-primary-bright">Vault</span>
+                <span className="font-display font-semibold text-xl tracking-tight">
+                  <span className="text-text-hi">Bottle</span><span className="text-primary-bright">Vault</span>
+                </span>
               </Link>
               <div className="hidden sm:flex gap-1">
                 {navLinks.map((link) => {

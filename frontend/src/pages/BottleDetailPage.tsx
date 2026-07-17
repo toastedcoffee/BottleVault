@@ -46,7 +46,7 @@ export default function BottleDetailPage() {
                 {product.brand.name}
                 {product.brand.country && ` - ${product.brand.country}`}
               </p>
-              <h1 className="text-2xl font-bold text-text-hi mt-1">{product.name}</h1>
+              <h1 className="font-display text-2xl font-bold text-text-hi mt-1">{product.name}</h1>
               <div className="flex items-center gap-3 mt-2">
                 <StatusBadge status={bottle.status} />
                 <span className="text-sm text-text-mid">
