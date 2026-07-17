@@ -1,5 +1,13 @@
 # Notes for Claude
 
+## Project stack
+
+React + TypeScript (Vite) frontend, Kotlin + Spring Boot backend, PostgreSQL
+(H2 in the `dev` profile), Docker Compose deployment. This is a web app — there
+is no Android/Kotlin-mobile app in this repo. If a spec, ticket, or your own
+memory assumes a different platform, verify against the actual current repo
+structure (`frontend/`, `backend/`) before implementing anything.
+
 ## Privacy
 
 This is a **public repo**. The maintainer's real first name must not appear
@@ -28,7 +36,29 @@ reasoned about it.
 A test plan in a PR body is a promise to the reviewer. Either you executed
 the checks, or you flag clearly that they're still outstanding.
 
+For large multi-file efforts (restyles, migrations), plan phases and land or
+verify them incrementally rather than emitting one giant change — long single
+outputs have been lost to output-limit truncation before.
+
+## Database portability: H2 vs Postgres
+
+Flyway migrations and any SQL shared across profiles must parse under **both**
+real PostgreSQL and H2 in PostgreSQL mode (the `dev` profile). No plpgsql
+`DO` blocks or Postgres-only DDL in shared paths — see the comments in
+`V6__refresh_token_hash_varchar.sql` for the established pattern. Behavior
+that genuinely needs real Postgres belongs in an integration test extending
+`AbstractPostgresIntegrationTest` (Testcontainers, postgres:16-alpine).
+
+The Windows Docker daemon path and the docker-java `api.version` pin are
+handled in `backend/build.gradle.kts` (tasks.withType<Test>) with comments
+explaining why — don't remove those blocks.
+
 ## Review gates
+
+The global `/ship` skill drives this entire flow — tests, reviews, gate
+markers, PR, CI wait, merge, cleanup — in one invocation. Use it for routine
+landings; the manual steps below remain the definition of what must happen
+and the fallback if the skill isn't available.
 
 Run `/code-review` before every **push/PR** — not every commit (commits are
 local checkpoints; the push is when code leaves the machine). Re-review after
@@ -67,6 +97,16 @@ Two caps must stay aligned, or nginx 413s a request the backend would accept:
 - `application.yml` → `spring.servlet.multipart.max-file-size` (backend cap)
 - `frontend/nginx.conf` → `client_max_body_size` on `/api/` (proxy cap, keep
   ~1 MB above backend cap for multipart overhead)
+
+## Windows / shell conventions
+
+Prefer the Bash tool (Git Bash) for git/npm/gradle commands — it takes normal
+POSIX quoting. Reach for the PowerShell tool only when a command needs it
+specifically (native Windows services, registry, etc.), and avoid nested or
+nakedly-escaped quotes there (e.g. `ssh-keygen -N '""'`, `sc create ... binPath=
+"..."`) — PowerShell's quote mangling has silently produced wrong values (like
+a passphrase-protected key) more than once. When in doubt, write the value to
+a temp file or use a here-string instead of inline escaping.
 
 ## Deployment model (TrueNAS / Dockge)
 
