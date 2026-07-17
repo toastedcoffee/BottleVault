@@ -73,7 +73,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
-      <h1 className="text-2xl font-bold text-text-hi">Settings</h1>
+      <h1 className="font-display text-2xl font-bold text-text-hi">Settings</h1>
 
       {/* Profile Section */}
       <div className="bg-surface rounded-lg border border-border p-6">

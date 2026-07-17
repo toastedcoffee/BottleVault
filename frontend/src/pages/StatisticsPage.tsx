@@ -64,7 +64,7 @@ export default function StatisticsPage() {
   if (!data || data.totalBottles === 0) {
     return (
       <div>
-        <h1 className="text-2xl font-bold text-text-hi mb-6">Statistics</h1>
+        <h1 className="font-display text-2xl font-bold text-text-hi mb-6">Statistics</h1>
         <EmptyState
           icon={Wine}
           title="No data yet"
@@ -93,7 +93,7 @@ export default function StatisticsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-text-hi mb-6">Statistics</h1>
+      <h1 className="font-display text-2xl font-bold text-text-hi mb-6">Statistics</h1>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">

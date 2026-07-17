@@ -1,5 +1,15 @@
 @import 'tailwindcss';
 
+/* Self-hosted variable woff2 (matches bottlevault.app). Normal 400–700 only —
+   deliberately not italic, Inter, or Space Mono; body stays system-ui. */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/fraunces-var-normal-latin.woff2') format('woff2');
+}
+
 /* The Label theme — wine-dark surfaces, pour-red accent, gold highlights.
    Canonical palette is "The Label" in bottlevault-site's src/styles/global.css.
    Keep shared hexes identical across repos so the properties read as one
@@ -29,6 +39,11 @@
   --color-status-unopened: #CDB0A4;  /* was #C9AFB3 — tracks text-mid */
   --color-status-low:      #C89B3C;  /* was #D9A441 — tracks gold */
   --color-status-empty:    #8E7068;  /* was #8E7078 — tracks text-low */
+
+  /* Display serif — deliberately scarce: header wordmark, page titles, and
+     (via the detail page title) the bottle name. Not used for body text,
+     grid card titles, subheadings, or buttons. */
+  --font-display: 'Fraunces', Georgia, serif;
 }
 
 html {
