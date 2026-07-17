@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
 import { Camera, X } from 'lucide-react';
 import InlineError from '../common/InlineError';
 
@@ -62,7 +62,14 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
           () => {} // ignore scan failures (no barcode in frame)
         )
         .then(() => {
-          if (mounted) setStarting(false);
+          if (mounted) {
+            setStarting(false);
+          } else {
+            // Unmounted while the camera was still being acquired: the
+            // cleanup ran while state was still NOT_STARTED and had nothing
+            // to stop, so release the camera here instead.
+            scanner.stop().catch(() => {});
+          }
         })
         .catch((err) => {
           if (mounted) {
@@ -78,9 +85,19 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
     return () => {
       mounted = false;
       clearTimeout(timer);
-      if (scannerRef.current && !stoppingRef.current) {
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current = null;
+      const scanner = scannerRef.current;
+      scannerRef.current = null;
+      if (scanner && !stoppingRef.current) {
+        // stop() throws SYNCHRONOUSLY (not a rejected promise) when the
+        // scanner never reached SCANNING — e.g. getUserMedia was denied — so
+        // a .catch() alone can't contain it; check the state first.
+        const state = scanner.getState();
+        if (
+          state === Html5QrcodeScannerState.SCANNING ||
+          state === Html5QrcodeScannerState.PAUSED
+        ) {
+          scanner.stop().catch(() => {});
+        }
       }
     };
   }, []); // No dependencies — only mount/unmount
