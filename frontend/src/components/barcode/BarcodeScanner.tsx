@@ -8,12 +8,73 @@ interface BarcodeScannerProps {
   onClose: () => void;
 }
 
+type CameraErrorKind = 'denied' | 'notFound' | 'inUse' | 'insecure' | 'unknown';
+
+interface CameraError {
+  kind: CameraErrorKind;
+  /** Raw error name/message, surfaced so a remote user can read it back to us. */
+  detail: string;
+}
+
+// scanner.start() rejects for several distinct reasons that all used to render
+// as one generic "denied or not available" line — which hides whether the
+// camera was blocked, missing, busy, or unavailable (insecure context / in-app
+// browser). html5-qrcode forwards getUserMedia's DOMException, so classify by
+// its .name and tailor the message — and, for a blocked permission, show how
+// to re-enable it.
+function classifyCameraError(err: unknown): CameraError {
+  const obj = typeof err === 'object' && err !== null ? (err as Record<string, unknown>) : null;
+  const name = typeof obj?.name === 'string' ? obj.name : '';
+  const message =
+    typeof obj?.message === 'string' ? obj.message : typeof err === 'string' ? err : '';
+  const haystack = `${name} ${message}`;
+  const detail = name || message || 'unknown error';
+
+  if (/NotAllowed|Security|Permission/i.test(haystack)) return { kind: 'denied', detail };
+  if (/NotFound|Overconstrained|DevicesNotFound/i.test(haystack))
+    return { kind: 'notFound', detail };
+  if (/NotReadable|TrackStart|InUse/i.test(haystack)) return { kind: 'inUse', detail };
+  if (/TypeError|not supported|mediaDevices|secure/i.test(haystack))
+    return { kind: 'insecure', detail };
+  return { kind: 'unknown', detail };
+}
+
+const ERROR_COPY: Record<CameraErrorKind, { message: string; showEnableSteps: boolean }> = {
+  denied: {
+    message:
+      "Camera access is blocked for this site, so scanning can't start. Allow the camera and reopen the scanner, or enter the barcode manually.",
+    showEnableSteps: true,
+  },
+  notFound: {
+    message: 'No camera was found for scanning. Please enter the barcode manually.',
+    showEnableSteps: false,
+  },
+  inUse: {
+    message:
+      'The camera is in use by another app or browser tab. Close it, then reopen the scanner, or enter the barcode manually.',
+    showEnableSteps: false,
+  },
+  insecure: {
+    message:
+      "Your browser wouldn't start the camera here. This can happen inside an in-app browser or on an insecure connection. Try opening the site directly in Chrome, Safari, or Firefox. Otherwise, enter the barcode manually.",
+    showEnableSteps: false,
+  },
+  unknown: {
+    message:
+      'Could not start the camera. Check the camera permission for this site and reopen the scanner, or enter the barcode manually.',
+    showEnableSteps: true,
+  },
+};
+
 export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const onScanRef = useRef(onScan);
   const stoppingRef = useRef(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<CameraError | null>(null);
   const [starting, setStarting] = useState(true);
+  // Bumped by "Try again" to re-run the start effect after a failure (e.g. once
+  // the user has allowed the camera or closed the app that was holding it).
+  const [retryToken, setRetryToken] = useState(0);
 
   // Keep the callback ref current without restarting the scanner. Writing the
   // ref in an effect (not the render body) satisfies react-hooks/refs while
@@ -74,9 +135,7 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
         .catch((err) => {
           if (mounted) {
             setStarting(false);
-            setError(
-              'Camera access denied or not available. Please enter the barcode manually.'
-            );
+            setError(classifyCameraError(err));
           }
           console.error('Scanner error:', err);
         });
@@ -100,7 +159,14 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
         }
       }
     };
-  }, []); // No dependencies — only mount/unmount
+  }, [retryToken]); // Re-run on mount/unmount and whenever "Try again" is pressed
+
+  const handleRetry = () => {
+    setError(null);
+    setStarting(true);
+    stoppingRef.current = false;
+    setRetryToken((token) => token + 1);
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex flex-col items-center justify-center">
@@ -117,14 +183,36 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
 
         <div className="p-4">
           {error ? (
-            <div className="text-center py-8">
-              <InlineError>{error}</InlineError>
-              <button
-                onClick={onClose}
-                className="mt-4 px-4 py-2 text-sm font-medium text-text-mid bg-transparent border border-border rounded-md hover:bg-surface-2 hover:text-text-hi"
-              >
-                Close
-              </button>
+            <div className="py-6">
+              <InlineError>{ERROR_COPY[error.kind].message}</InlineError>
+
+              {ERROR_COPY[error.kind].showEnableSteps && (
+                <div className="mt-4 text-sm text-text-mid">
+                  <p className="font-medium text-text-hi">How to allow the camera</p>
+                  <ol className="mt-2 list-decimal space-y-1 pl-5">
+                    <li>Tap the lock or settings icon to the left of the web address.</li>
+                    <li>Open Permissions (or Site settings) → Camera.</li>
+                    <li>Set Camera to Allow, then reopen the scanner.</li>
+                  </ol>
+                </div>
+              )}
+
+              <div className="mt-4 flex justify-center gap-3">
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 text-sm font-medium text-text-mid bg-transparent border border-border rounded-md hover:bg-surface-2 hover:text-text-hi"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handleRetry}
+                  className="px-4 py-2 text-sm font-medium text-on-primary bg-primary rounded-md hover:bg-primary-bright"
+                >
+                  Try again
+                </button>
+              </div>
+
+              <p className="mt-4 text-xs text-text-low text-center">Details: {error.detail}</p>
             </div>
           ) : (
             <>
@@ -139,9 +227,11 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
               />
             </>
           )}
-          <p className="text-xs text-text-mid text-center mt-3">
-            Point your camera at a barcode on the bottle
-          </p>
+          {!error && (
+            <p className="text-xs text-text-mid text-center mt-3">
+              Point your camera at a barcode on the bottle
+            </p>
+          )}
         </div>
       </div>
     </div>

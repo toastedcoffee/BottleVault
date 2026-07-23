@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import BarcodeScanner from './BarcodeScanner';
 
 const mockScanner = vi.hoisted(() => ({
   startBehavior: 'resolve' as 'resolve' | 'reject' | 'hang',
+  // Error start() rejects with when startBehavior is 'reject'. Defaults to a
+  // denied-permission DOMException; individual tests override it to exercise
+  // the other classified failure modes.
+  startError: null as unknown,
   resolveStart: null as (() => void) | null,
   stopCalls: 0,
 }));
@@ -26,7 +30,8 @@ vi.mock('html5-qrcode', () => {
     start(): Promise<void> {
       if (mockScanner.startBehavior === 'reject') {
         return Promise.reject(
-          new DOMException('Permission denied', 'NotAllowedError')
+          mockScanner.startError ??
+            new DOMException('Permission denied', 'NotAllowedError')
         );
       }
       if (mockScanner.startBehavior === 'hang') {
@@ -67,21 +72,63 @@ vi.mock('html5-qrcode', () => {
 describe('BarcodeScanner', () => {
   beforeEach(() => {
     mockScanner.startBehavior = 'resolve';
+    mockScanner.startError = null;
     mockScanner.resolveStart = null;
     mockScanner.stopCalls = 0;
   });
 
-  it('shows the permission message and closes cleanly when camera access is denied', async () => {
-    mockScanner.startBehavior = 'reject';
+  it('shows re-enable guidance and closes cleanly when camera permission is denied', async () => {
+    mockScanner.startBehavior = 'reject'; // defaults to NotAllowedError
     const { unmount } = render(
       <BarcodeScanner onScan={() => {}} onClose={() => {}} />
     );
 
-    await screen.findByText(/camera access denied/i);
+    await screen.findByText(/camera access is blocked/i);
+    expect(screen.getByText(/how to allow the camera/i)).toBeInTheDocument();
+    // The raw error name is surfaced so a remote user can read it back to us.
+    expect(screen.getByText(/^Details:/).textContent).toContain('NotAllowedError');
 
     // Before the fix, the effect cleanup called stop() on a scanner that
     // never started, and the synchronous throw escaped to the ErrorBoundary.
     expect(() => unmount()).not.toThrow();
+  });
+
+  it('shows a distinct message with no re-enable steps when no camera is found', async () => {
+    mockScanner.startBehavior = 'reject';
+    mockScanner.startError = new DOMException('No device', 'NotFoundError');
+    render(<BarcodeScanner onScan={() => {}} onClose={() => {}} />);
+
+    await screen.findByText(/no camera was found/i);
+    expect(screen.queryByText(/how to allow the camera/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/^Details:/).textContent).toContain('NotFoundError');
+  });
+
+  it('restarts the camera when "Try again" is pressed after a failure', async () => {
+    mockScanner.startBehavior = 'reject'; // defaults to NotAllowedError
+    render(<BarcodeScanner onScan={() => {}} onClose={() => {}} />);
+
+    await screen.findByText(/camera access is blocked/i);
+
+    // Camera now allowed: the next start() succeeds.
+    mockScanner.startBehavior = 'resolve';
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+
+    // The error UI clears and the scanner remounts its reader element.
+    await waitFor(() =>
+      expect(screen.queryByText(/camera access is blocked/i)).not.toBeInTheDocument()
+    );
+    expect(document.getElementById('barcode-reader')).not.toBeNull();
+  });
+
+  it('treats a missing mediaDevices (TypeError) as an insecure-context problem', async () => {
+    mockScanner.startBehavior = 'reject';
+    mockScanner.startError = new TypeError(
+      "Cannot read properties of undefined (reading 'getUserMedia')"
+    );
+    render(<BarcodeScanner onScan={() => {}} onClose={() => {}} />);
+
+    await screen.findByText(/in-app browser or on an insecure connection/i);
+    expect(screen.queryByText(/how to allow the camera/i)).not.toBeInTheDocument();
   });
 
   it('stops the scanner on unmount after a successful start', async () => {
