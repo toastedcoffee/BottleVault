@@ -113,3 +113,8 @@ clone on the server**. Images come from GHCR
 TrueNAS: trigger the CI `workflow_dispatch` with a `tag` input, then point the
 Dockge stack at `:<tag>` instead of `:latest`. CI only overwrites `:latest`
 from `main`.
+
+For updating a running instance safely — which changes need a backup, which
+cause downtime, and the backup/restore commands — see [DEPLOY.md](DEPLOY.md).
+A change is backup-required iff it adds a file under
+`backend/src/main/resources/db/migration/`.
