@@ -37,3 +37,6 @@ Thumbs.db
 
 # Local-only reports (not for the public repo)
 DEPENDENCY_AUDIT.md
+
+# Local-only Claude notes (never for the public repo)
+CLAUDE.local.md

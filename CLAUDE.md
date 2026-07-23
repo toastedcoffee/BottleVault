@@ -21,9 +21,6 @@ test plans, use `user@example.com` — never a name-shaped local-part.
 The GitHub identity for this repo is `toastedcoffee`. Only refer to the
 maintainer by that handle or the neutral terms above.
 
-"DOM" (Document Object Model) and "domain" are fine — those aren't the
-maintainer's name.
-
 ## Testing before shipping
 
 When you write code — especially shell scripts, SQL, or anything that runs
