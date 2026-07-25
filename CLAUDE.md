@@ -116,5 +116,5 @@ from `main`.
 
 For updating a running instance safely — which changes need a backup, which
 cause downtime, and the backup/restore commands — see [DEPLOY.md](DEPLOY.md).
-A change is backup-required iff it adds a file under
+A change is backup-required if and only if it adds a file under
 `backend/src/main/resources/db/migration/`.
