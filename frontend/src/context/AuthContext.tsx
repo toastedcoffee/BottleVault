@@ -1,9 +1,11 @@
 import { useState, useCallback, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { authApi } from '../api/auth.api';
 import type { UserProfile, LoginRequest, RegisterRequest } from '../types/auth';
 import { AuthContext } from './auth-context';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<UserProfile | null>(() => {
     // Restore an existing session synchronously on first render, so there's no
     // flash of logged-out UI and no setState-in-effect on mount.
@@ -51,7 +53,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     sessionStorage.clear();
     setUser(null);
-  }, []);
+    // Drop every cached query too. Logout is client-side only, so without this
+    // the previous user's data (collection, statistics) stays in memory and is
+    // served to whoever signs in next on this tab until staleTime expires.
+    queryClient.clear();
+  }, [queryClient]);
 
   const updateUser = useCallback((profile: UserProfile) => {
     sessionStorage.setItem('user', JSON.stringify(profile));

@@ -1,6 +1,7 @@
 package com.bottlevault.bottle
 
 import com.bottlevault.bottle.dto.*
+import com.bottlevault.common.model.AlcoholType
 import com.bottlevault.common.model.BottleStatus
 import jakarta.validation.Valid
 import org.springframework.core.io.Resource
@@ -21,7 +22,7 @@ class BottleController(
     @GetMapping
     fun getBottles(
         @RequestParam status: BottleStatus?,
-        @RequestParam type: String?,
+        @RequestParam type: AlcoholType?,
         @RequestParam search: String?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,

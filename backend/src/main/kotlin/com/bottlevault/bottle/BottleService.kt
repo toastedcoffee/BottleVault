@@ -4,6 +4,7 @@ import com.bottlevault.auth.UserRepository
 import com.bottlevault.bottle.dto.*
 import com.bottlevault.common.exception.AccessDeniedException
 import com.bottlevault.common.exception.ResourceNotFoundException
+import com.bottlevault.common.model.AlcoholType
 import com.bottlevault.common.model.BottleStatus
 import com.bottlevault.product.ProductRepository
 import org.springframework.data.domain.PageRequest
@@ -24,7 +25,7 @@ class BottleService(
     fun getBottles(
         userId: UUID,
         status: BottleStatus?,
-        type: String?,
+        type: AlcoholType?,
         search: String?,
         page: Int,
         size: Int,
@@ -33,12 +34,14 @@ class BottleService(
         val sortOrder = parseSortOrder(sort)
         val pageable = PageRequest.of(page, size, sortOrder)
 
-        val bottlePage = when {
-            !search.isNullOrBlank() -> bottleRepository.searchByUserIdAndQuery(userId, search, pageable)
-            status != null -> bottleRepository.findByUserIdAndStatus(userId, status, pageable)
-            !type.isNullOrBlank() -> bottleRepository.findByUserIdAndProductType(userId, type, pageable)
-            else -> bottleRepository.findByUserId(userId, pageable)
-        }
+        val bottlePage = bottleRepository.findFiltered(
+            userId = userId,
+            status = status,
+            type = type,
+            // A blank search box is no filter: the empty needle matches every row.
+            search = search?.trim().orEmpty(),
+            pageable = pageable
+        )
 
         return PageResponse(
             content = bottlePage.content.map { BottleResponse.from(it) },
