@@ -1,5 +1,6 @@
 package com.bottlevault.bottle
 
+import com.bottlevault.common.model.AlcoholType
 import com.bottlevault.common.model.BottleStatus
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
@@ -10,23 +11,35 @@ import java.util.UUID
 
 interface BottleRepository : JpaRepository<Bottle, UUID> {
 
-    fun findByUserId(userId: UUID, pageable: Pageable): Page<Bottle>
-
-    fun findByUserIdAndStatus(userId: UUID, status: BottleStatus, pageable: Pageable): Page<Bottle>
-
-    @Query("""
-        SELECT b FROM Bottle b JOIN b.product p JOIN p.brand br
-        WHERE b.user.id = :userId AND p.type = :type
-    """)
-    fun findByUserIdAndProductType(userId: UUID, type: String, pageable: Pageable): Page<Bottle>
-
+    /**
+     * The Collection page's listing. Every filter is optional and they compose:
+     * a null argument drops that predicate, anything else narrows the result.
+     * One query rather than one method per filter, because the previous
+     * method-per-filter approach applied only whichever filter matched first.
+     *
+     * `type` and `status` are the enums, not Strings: Hibernate infers each bind
+     * type from the compared column and rejects a String argument at execution.
+     *
+     * `search` is non-null by design — an empty needle is the "no search" case,
+     * since LIKE '%%' matches every row. A null here would reach Postgres as an
+     * untyped bind inside LOWER(CONCAT(...)) and fail with
+     * "function lower(bytea) does not exist".
+     */
     @Query("""
         SELECT b FROM Bottle b JOIN b.product p JOIN p.brand br
         WHERE b.user.id = :userId
+        AND (:status IS NULL OR b.status = :status)
+        AND (:type IS NULL OR p.type = :type)
         AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%'))
              OR LOWER(br.name) LIKE LOWER(CONCAT('%', :search, '%')))
     """)
-    fun searchByUserIdAndQuery(userId: UUID, search: String, pageable: Pageable): Page<Bottle>
+    fun findFiltered(
+        userId: UUID,
+        status: BottleStatus?,
+        type: AlcoholType?,
+        search: String,
+        pageable: Pageable
+    ): Page<Bottle>
 
     fun findByIdAndUserId(id: UUID, userId: UUID): Bottle?
 

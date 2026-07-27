@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { AuthProvider } from './AuthContext';
 import { useAuth } from './useAuth';
@@ -28,10 +29,16 @@ const authResponse = {
   user: profile,
 };
 
-const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
-
+// Mirrors App.tsx's nesting: the provider lives inside QueryClientProvider so
+// logout can reach the cache. A fresh client per render keeps tests isolated.
 function renderAuth() {
-  return renderHook(() => useAuth(), { wrapper });
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>{children}</AuthProvider>
+    </QueryClientProvider>
+  );
+  return { ...renderHook(() => useAuth(), { wrapper }), queryClient };
 }
 
 beforeEach(() => {
@@ -134,6 +141,21 @@ describe('logout', () => {
     expect(sessionStorage.getItem('user')).toBeNull();
     expect(result.current.user).toBeNull();
     expect(result.current.isAuthenticated).toBe(false);
+  });
+
+  it('clears cached queries so the next account signing in cannot see them', async () => {
+    vi.mocked(authApi.login).mockResolvedValue(authResponse);
+    const { result, queryClient } = renderAuth();
+    await act(() => result.current.login({ email: 'user@example.com', password: 'pw' }));
+
+    // Stand in for anything the signed-in user loaded (the collection, stats).
+    queryClient.setQueryData(['bottles', { size: 50 }], { content: [{ id: 'b1' }], totalElements: 1 });
+    expect(queryClient.getQueryData(['bottles', { size: 50 }])).toBeDefined();
+
+    act(() => result.current.logout());
+
+    expect(queryClient.getQueryData(['bottles', { size: 50 }])).toBeUndefined();
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
   });
 
   it('skips the revoke call when no refresh token is stored', () => {
