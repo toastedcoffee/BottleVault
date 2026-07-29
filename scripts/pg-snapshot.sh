@@ -29,6 +29,17 @@ if [ -z "$DATASET" ]; then
     exit 2
 fi
 
+case "$KEEP" in
+    ''|*[!0-9]*)
+        echo "error: keep must be a positive integer (got: $KEEP)" >&2
+        exit 2
+        ;;
+esac
+if [ "$KEEP" -lt 1 ]; then
+    echo "error: keep must be at least 1 — 0 would prune the snapshot just created" >&2
+    exit 2
+fi
+
 if ! zfs list -H -o name "$DATASET" >/dev/null 2>&1; then
     echo "error: no such dataset: $DATASET" >&2
     echo "hint:  zfs list -o name | grep -i bottle" >&2
@@ -52,13 +63,18 @@ zfs snapshot "$SNAPSHOT"
 
 echo "==> pruning ${PREFIX} snapshots, keeping newest $KEEP"
 # -s creation sorts oldest-first, so head -n -KEEP is everything but the newest.
+# grep matches nothing on a first run (no prior ${PREFIX} snapshots) and exits 1,
+# which would otherwise fail the whole pipeline under pipefail and kill the script
+# — via set -e — before it ever reaches the rollback instructions below. That's an
+# expected, non-fatal case, so it's tolerated here the same way the summary grep
+# a few lines down already tolerates a no-match result.
 zfs list -H -t snapshot -o name -s creation -r "$DATASET" \
     | grep -F "@${PREFIX}-" \
     | head -n "-${KEEP}" \
     | while read -r old; do
         echo "    destroying $old"
         zfs destroy "$old"
-    done
+    done || true
 
 echo
 echo "==> current ${PREFIX} snapshots:"

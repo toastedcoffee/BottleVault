@@ -85,8 +85,9 @@ that has children, since that is the signature of a non-dedicated dataset whose
 rollback would take unrelated data with it.
 
 This is a **local** safety net for the likeliest data-loss event — a bad migration
-or an application bug — not disaster recovery. It does not survive pool loss. See
-the offsite backup section for that.
+or an application bug — not disaster recovery. It does not survive pool loss.
+Offsite, point-in-time backup (e.g. pgBackRest to object storage) is a separate
+layer and is not yet set up for this deployment.
 
 ### Pin your images in production
 
