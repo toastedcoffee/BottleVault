@@ -1,0 +1,21 @@
+name = "bottlevault-maintenance"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# Serves maintenance.html as a string import rather than a fetched asset, so the
+# page has no dependency on anything that could also be down.
+rules = [
+  { type = "Text", globs = ["**/*.html"], fallthrough = false }
+]
+
+# Create with:  wrangler kv namespace create FLAGS
+# then paste the returned id here.
+[[kv_namespaces]]
+binding = "FLAGS"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Bind after the Access-ordering test in S2 confirms the maintenance page is
+# actually reachable during an outage.
+[[routes]]
+pattern = "cellar.bottlevault.app/*"
+zone_name = "bottlevault.app"
