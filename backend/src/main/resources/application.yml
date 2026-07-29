@@ -63,6 +63,20 @@ management:
     web:
       exposure:
         include: health
+  endpoint:
+    health:
+      # Probe groups are auto-enabled only when Spring Boot detects Kubernetes.
+      # We run under Docker Compose, so they must be turned on explicitly or
+      # /actuator/health/readiness 404s — which would leave the container
+      # healthcheck permanently failing and, since the tunnel starts downstream
+      # of it, take the whole stack off the internet.
+      probes:
+        enabled: true
+      group:
+        readiness:
+          # readinessState alone would report UP with a dead database. An
+          # instance that can't reach Postgres cannot serve, so it isn't ready.
+          include: readinessState,db
 
 springdoc:
   api-docs:
