@@ -15,27 +15,47 @@
 #   SWAGGER_ENABLED      — expose Swagger UI at /swagger-ui (default: false)
 #   ALLOWED_ORIGINS      — comma-separated public URLs for CORS (default: none — set when using a tunnel)
 #   PORT                 — host port for the web UI (default: 80)
+#   PG_DATA_PATH         — host path for the database (default: ./data/postgres).
+#                          On ZFS, point this at a DEDICATED dataset so the DB can be
+#                          snapshotted and rolled back independently of everything else.
+#   UPLOADS_PATH         — host path for bottle photos (default: ./data/uploads)
+#   POSTGRES_IMAGE       — pin this in production; see DEPLOY.md
+#   CLOUDFLARED_IMAGE    — pin this in production; see DEPLOY.md
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # Floating tags drift. Pin POSTGRES_IMAGE in prod so `docker compose pull`
+    # can't restart your database on a minor version you didn't choose.
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     container_name: bottlevault-db
     environment:
       POSTGRES_DB: bottlevault
       POSTGRES_USER: bottlevault
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
     # Bind mount keeps data visible on the host for ZFS snapshots / backups.
-    # On TrueNAS with Dockge this resolves to /mnt/<pool>/configs/stacks/bottlevault/data/postgres
+    # Default is stack-relative, which works anywhere. On TrueNAS, override
+    # PG_DATA_PATH with a dedicated dataset (recordsize=8K, sync=standard):
+    # a `zfs snapshot` operates on datasets, not directories, so a DB sharing a
+    # dataset with your stack configs can't be rolled back on its own.
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - ${PG_DATA_PATH:-./data/postgres}:/var/lib/postgresql/data
     # expose (not ports) — Postgres is only reachable from the internal Docker network
     expose:
       - "5432"
+    # Docker stops with SIGTERM, which Postgres reads as SMART shutdown: wait for
+    # every client to disconnect voluntarily. The API's connection pool never
+    # does, so the 10s default grace expires and Docker SIGKILLs the database —
+    # an unclean stop and crash recovery on EVERY deploy and reboot, including
+    # the NUT-triggered shutdown on battery. SIGINT is FAST shutdown: boot the
+    # clients, checkpoint, exit cleanly.
+    stop_signal: SIGINT
+    stop_grace_period: 1m
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bottlevault"]
+      test: ["CMD-SHELL", "pg_isready -U bottlevault -d bottlevault"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks: [internal]
     restart: unless-stopped
 
   backend:
@@ -61,21 +81,28 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       UPLOADS_DIR: /app/uploads
     # Bottle photos live on the host so ZFS snapshots back them up alongside the DB.
-    # On TrueNAS with Dockge this resolves to /mnt/<pool>/configs/stacks/bottlevault/data/uploads
     volumes:
-      - ./data/uploads:/app/uploads
+      - ${UPLOADS_PATH:-./data/uploads}:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
     # Internal only — frontend (nginx) reaches it at http://backend:8080, nothing external
     expose:
       - "8080"
+    # readiness (not plain health) is the semantically correct "can this instance
+    # take traffic" probe. Requires management.endpoint.health.probes.enabled and
+    # a SecurityConfig matcher covering /actuator/health/** — both landed in the
+    # same change as this healthcheck; see ReadinessProbeIntegrationTest.
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health/readiness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 60s
+    # Must exceed spring.lifecycle.timeout-per-shutdown-phase (30s) so the JVM
+    # finishes draining in-flight requests before Docker escalates to SIGKILL.
+    stop_grace_period: 45s
+    networks: [internal]
     restart: unless-stopped
 
   frontend:
@@ -84,9 +111,22 @@ services:
     # The only service bound to a host port — serves the React app and proxies /api/ to backend
     ports:
       - "${PORT:-80}:80"
+    # service_started, NOT service_healthy. The SPA is static and has no runtime
+    # dependency on the API to render. Gating it on backend health meant a backend
+    # problem took down the very shell that could explain the backend problem, and
+    # added the API's whole 60s start period to cold boot before anything answered.
+    # nginx now serves immediately and returns 502 on /api/ until the API is up;
+    # the client turns that into an in-app "starting up" banner.
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks: [internal, edge]
     restart: unless-stopped
 
   # Cloudflare Tunnel — outbound connection to Cloudflare's edge, no ports opened on the host.
@@ -95,12 +135,21 @@ services:
   # validates TUNNEL_TOKEN below even if you never start this service, so
   # LAN-only deployments must delete the whole block.
   tunnel:
-    image: cloudflare/cloudflared:latest
+    image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:latest}
     container_name: bottlevault-tunnel
-    command: tunnel run
+    command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set TUNNEL_TOKEN from the Cloudflare Zero Trust dashboard, or remove the tunnel service for LAN-only}
     depends_on:
       frontend:
-        condition: service_started
+        condition: service_healthy
+    # `edge` only: cloudflared terminates internet traffic and has no business
+    # reaching Postgres. frontend bridges the two networks and is the sole path in.
+    networks: [edge]
     restart: unless-stopped
+
+networks:
+  internal:
+    driver: bridge
+  edge:
+    driver: bridge
