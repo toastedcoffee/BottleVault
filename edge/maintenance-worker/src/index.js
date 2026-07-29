@@ -39,6 +39,12 @@ export default {
 
     // Unplanned: caught automatically, no flag needed.
     try {
+      // Passthrough to origin, not a loop: Cloudflare detects that this
+      // subrequest's URL matches this very Worker's own route and sends it
+      // straight to origin instead of re-invoking the Worker. That only
+      // holds for a plain fetch(request) on the invoking route — swapping
+      // this for a service binding or changing the route pattern would
+      // reintroduce a real request loop.
       const response = await fetch(request);
       return ORIGIN_DOWN.includes(response.status) ? down(UNPLANNED_RETRY_SECONDS) : response;
     } catch {

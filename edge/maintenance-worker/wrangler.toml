@@ -14,8 +14,13 @@ rules = [
 binding = "FLAGS"
 id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
-# Bind after the Access-ordering test in S2 confirms the maintenance page is
-# actually reachable during an outage.
+# Bind only after running the "Access ordering" check in this repo's
+# README.md ("Verify before trusting it" section) and confirming the
+# maintenance page is actually reachable during an outage, not hidden
+# behind a Cloudflare Access login.
+#
+# Self-hosting this? Replace both values below with your own hostname and
+# zone — these are the maintainer's own domain, kept as a worked example.
 [[routes]]
 pattern = "cellar.bottlevault.app/*"
 zone_name = "bottlevault.app"
