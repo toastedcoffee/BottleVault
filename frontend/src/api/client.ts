@@ -47,6 +47,29 @@ function retryAfterSeconds(error: AxiosError): number | null {
   return Number.isFinite(raw) && raw > 0 ? raw : null;
 }
 
+// A full navigation is what triggers Cloudflare Access's login flow properly —
+// an XHR can't, because the redirect target is cross-origin. The guard exists
+// because any bug that makes this condition sticky would otherwise reload
+// forever; 15s is long enough to break a loop, short enough to stay invisible.
+const ACCESS_RELOAD_KEY = 'bv.accessReloadAt';
+const ACCESS_RELOAD_GUARD_MS = 15_000;
+
+function looksLikeAccessWall(error: AxiosError): boolean {
+  // No response object at all: the browser followed Access's 302 to a
+  // cross-origin host that sends no CORS headers for us, so the XHR failed
+  // before any body was readable. This is the common symptom, not the HTML one.
+  if (!error.response) return true;
+  const contentType = String(error.response.headers?.['content-type'] ?? '');
+  return contentType.includes('text/html');
+}
+
+function recoverFromAccessWall(): void {
+  const last = Number(sessionStorage.getItem(ACCESS_RELOAD_KEY) ?? 0);
+  if (Date.now() - last < ACCESS_RELOAD_GUARD_MS) return;
+  sessionStorage.setItem(ACCESS_RELOAD_KEY, String(Date.now()));
+  window.location.reload();
+}
+
 // Response interceptor: handle 401 by attempting token refresh
 apiClient.interceptors.response.use(
   (response) => {
@@ -58,6 +81,11 @@ apiClient.interceptors.response.use(
 
     if (isUnavailable(error)) {
       markUnavailable(retryAfterSeconds(error));
+      return Promise.reject(error);
+    }
+
+    if (looksLikeAccessWall(error)) {
+      recoverFromAccessWall();
       return Promise.reject(error);
     }
 

@@ -258,3 +258,86 @@ describe('degraded service detection', () => {
     expect(getServiceState().unavailable).toBe(false);
   });
 });
+
+describe('Cloudflare Access session recovery', () => {
+  const RELOAD_KEY = 'bv.accessReloadAt';
+
+  beforeEach(() => {
+    sessionStorage.removeItem(RELOAD_KEY);
+    markAvailable();
+  });
+
+  function networkError(config: InternalAxiosRequestConfig): Promise<AxiosResponse> {
+    // No `response` — what a cross-origin Access redirect actually produces.
+    return Promise.reject(new AxiosError('Network Error', AxiosError.ERR_NETWORK, config, null));
+  }
+
+  it('reloads when a request fails with no response at all', async () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    handler = networkError;
+
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads when the API answers with HTML instead of JSON', async () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    handler = (config) =>
+      Promise.reject(
+        new AxiosError('Unauthorized', AxiosError.ERR_BAD_REQUEST, config, null, {
+          data: '<html><body>Sign in</body></html>',
+          status: 401,
+          statusText: '',
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+          config,
+        } as AxiosResponse)
+      );
+
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads at most once per guard window', async () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    handler = networkError;
+
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+    await expect(apiClient.get('/stats')).rejects.toBeInstanceOf(AxiosError);
+
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reload on an HTML 502 from nginx', async () => {
+    // The reload-loop hazard: a 502 while the API boots is an HTML page. It must
+    // route to the maintenance banner, never to a navigation.
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    handler = (config) =>
+      Promise.reject(
+        new AxiosError('Bad Gateway', AxiosError.ERR_BAD_RESPONSE, config, null, {
+          data: '<html><body>502 Bad Gateway</body></html>',
+          status: 502,
+          statusText: '',
+          headers: { 'content-type': 'text/html' },
+          config,
+        } as AxiosResponse)
+      );
+
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+
+    expect(reload).not.toHaveBeenCalled();
+    expect(getServiceState().unavailable).toBe(true);
+  });
+
+  it('does not reload on a normal JSON 401, leaving the refresh flow alone', async () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    seedSession();
+    failOnceWith401();
+    mockRefreshSuccess();
+
+    await apiClient.get('/bottles');
+
+    expect(reload).not.toHaveBeenCalled();
+  });
+});
