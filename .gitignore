@@ -40,3 +40,8 @@ DEPENDENCY_AUDIT.md
 
 # Local-only Claude notes (never for the public repo)
 CLAUDE.local.md
+
+# Implementation plans — working notes, and they describe the maintainer's
+# private infrastructure. Scoped to docs/superpowers/ so genuine user-facing
+# docs can still live under docs/.
+docs/superpowers/
