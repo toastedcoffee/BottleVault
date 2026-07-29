@@ -64,17 +64,23 @@ zfs snapshot "$SNAPSHOT"
 echo "==> pruning ${PREFIX} snapshots, keeping newest $KEEP"
 # -s creation sorts oldest-first, so head -n -KEEP is everything but the newest.
 # grep matches nothing on a first run (no prior ${PREFIX} snapshots) and exits 1,
-# which would otherwise fail the whole pipeline under pipefail and kill the script
-# — via set -e — before it ever reaches the rollback instructions below. That's an
-# expected, non-fatal case, so it's tolerated here the same way the summary grep
-# a few lines down already tolerates a no-match result.
-zfs list -H -t snapshot -o name -s creation -r "$DATASET" \
-    | grep -F "@${PREFIX}-" \
-    | head -n "-${KEEP}" \
-    | while read -r old; do
+# which would otherwise fail under pipefail and kill the script — via set -e —
+# before it ever reaches the rollback instructions below. That's an expected,
+# non-fatal case, so only the grep is tolerated (matching the summary grep a
+# few lines down, which does the same). The tolerance stops there: capturing
+# the match list first, instead of piping straight into the destroy loop,
+# means a real `zfs destroy` failure (busy dataset, a hold, a permission
+# error) still propagates and aborts the script rather than being swallowed
+# alongside the empty-match case — this script's whole job is guaranteeing a
+# rollback path exists, so silently claiming success after a failed prune
+# would be worse than the crash it replaced.
+MATCHES="$(zfs list -H -t snapshot -o name -s creation -r "$DATASET" | grep -F "@${PREFIX}-" || true)"
+if [ -n "$MATCHES" ]; then
+    echo "$MATCHES" | head -n "-${KEEP}" | while read -r old; do
         echo "    destroying $old"
         zfs destroy "$old"
-    done || true
+    done
+fi
 
 echo
 echo "==> current ${PREFIX} snapshots:"
