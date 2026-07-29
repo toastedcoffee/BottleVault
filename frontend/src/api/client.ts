@@ -1,4 +1,5 @@
-import axios from 'axios';
+import axios, { type AxiosError } from 'axios';
+import { markAvailable, markUnavailable } from '../lib/serviceState';
 
 const apiClient = axios.create({
   baseURL: '/api',
@@ -27,11 +28,38 @@ async function refreshAccessToken(refreshToken: string): Promise<string> {
   return data.accessToken;
 }
 
+// 502/503/504 all mean "the API isn't there," and all three genuinely occur:
+// nginx emits a raw 502 while the API boots (LAN access has no Worker in front
+// of it), and the edge Worker emits a structured 503 during maintenance.
+// Treating them uniformly also keeps them off the HTML-detection path below,
+// which is what stops nginx's HTML 502 page from triggering a reload loop.
+export const UNAVAILABLE_STATUSES: readonly number[] = [502, 503, 504];
+
+function isUnavailable(error: AxiosError): boolean {
+  // Narrow before calling includes(): with a readonly number[] and a possibly
+  // undefined status, `includes(error.response?.status)` is a type error the
+  // moment anyone annotates this handler's parameter.
+  return error.response !== undefined && UNAVAILABLE_STATUSES.includes(error.response.status);
+}
+
+function retryAfterSeconds(error: AxiosError): number | null {
+  const raw = Number(error.response?.headers?.['retry-after']);
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
+}
+
 // Response interceptor: handle 401 by attempting token refresh
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    markAvailable();
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
+
+    if (isUnavailable(error)) {
+      markUnavailable(retryAfterSeconds(error));
+      return Promise.reject(error);
+    }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;

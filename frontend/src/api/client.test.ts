@@ -12,6 +12,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios';
 import apiClient from './client';
+import { getServiceState, markAvailable } from '../lib/serviceState';
 
 // Replace the transport layer: every request apiClient dispatches lands in
 // `handler` instead of the network. Rejections must be AxiosErrors carrying
@@ -199,5 +200,61 @@ describe('non-401 errors', () => {
     // Session untouched.
     expect(sessionStorage.getItem('accessToken')).toBe('stale-access');
     expect(sessionStorage.getItem('refreshToken')).toBe('refresh-1');
+  });
+});
+
+describe('degraded service detection', () => {
+  beforeEach(() => {
+    markAvailable();
+  });
+
+  it.each([502, 503, 504])('marks the service unavailable on a %i', async (status) => {
+    handler = (config) => httpError(config, status);
+
+    await expect(apiClient.get('/bottles')).rejects.toMatchObject({ response: { status } });
+
+    expect(getServiceState().unavailable).toBe(true);
+  });
+
+  it('captures Retry-After as the countdown hint', async () => {
+    handler = (config) =>
+      Promise.reject(
+        new AxiosError('Service Unavailable', AxiosError.ERR_BAD_RESPONSE, config, null, {
+          data: {}, status: 503, statusText: '', headers: { 'retry-after': '900' }, config,
+        } as AxiosResponse)
+      );
+
+    await expect(apiClient.get('/bottles')).rejects.toMatchObject({ response: { status: 503 } });
+
+    expect(getServiceState().retryAfterSeconds).toBe(900);
+  });
+
+  it('leaves the hint null when Retry-After is absent or unparseable', async () => {
+    handler = (config) => httpError(config, 503);
+
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+
+    expect(getServiceState().retryAfterSeconds).toBeNull();
+  });
+
+  it('clears the unavailable state on the next successful response', async () => {
+    handler = (config) => httpError(config, 503);
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+    expect(getServiceState().unavailable).toBe(true);
+
+    handler = (config) => ok(config);
+    await apiClient.get('/bottles');
+
+    expect(getServiceState().unavailable).toBe(false);
+  });
+
+  it('does not mark unavailable on a 500', async () => {
+    // A 500 is a bug in a running API, not an absent one. Showing "back shortly"
+    // for an application error would be a lie.
+    handler = (config) => httpError(config, 500);
+
+    await expect(apiClient.get('/bottles')).rejects.toMatchObject({ response: { status: 500 } });
+
+    expect(getServiceState().unavailable).toBe(false);
   });
 });
