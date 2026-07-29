@@ -50,6 +50,60 @@ judgement call — read the SQL: `CREATE TABLE`/`ADD COLUMN`/`CREATE INDEX` is
 additive; `DROP`, `ALTER ... TYPE`, `RENAME`, or any `UPDATE`/`DELETE` backfill
 is destructive and needs the full-care path.
 
+### Does this release need a maintenance window?
+
+The table above answers *"do I need a backup?"* — that axis is about data safety
+and is unchanged. This one answers *"will users notice?"*, and it exists because
+the answer stopped being "always" once the stack learned to shut down cleanly and
+serve the SPA independently of the API.
+
+| Class | What it covers | User impact | Procedure |
+|---|---|---|---|
+| **A — no window** | Frontend-only changes. Backend changes with no migration. **Additive** migrations: new tables, new nullable columns, new indexes built `CONCURRENTLY`. | SPA keeps serving throughout. `/api/` returns 502 for ~30–60s while the API restarts; the in-app banner explains it. | Pull + `up -d`. |
+| **B — window** | **Destructive or incompatible** migrations: drops, renames, `NOT NULL` on an existing column, type changes. Postgres version bumps. TrueNAS updates. Anything where old code would break against the new schema. | Real downtime, 2–5 minutes. | Snapshot → flip the maintenance flag → pull + `up -d` → verify → unflip. |
+
+Class B is not a failure. For a closed beta, a branded "back in 15 minutes" page
+and a note to users is a completely adequate answer, and it is the answer that
+doesn't add a distributed system to the maintenance burden.
+
+**The distinction is only meaningful if you make it during review.** A rename that
+slips through as Class A is exactly the case that breaks. Ask the question when
+the PR is opened, not when the deploy is running.
+
+### Snapshot before every migration
+
+Once PGDATA lives on its own ZFS dataset, a pre-migration snapshot is one command
+and gives you instant rollback:
+
+```bash
+./scripts/pg-snapshot.sh <pool>/appdata/bottlevault-pg
+```
+
+Run it on the TrueNAS host as root, before `docker compose pull`. The script
+prints the rollback procedure on completion. It refuses to run against a dataset
+that has children, since that is the signature of a non-dedicated dataset whose
+rollback would take unrelated data with it.
+
+This is a **local** safety net for the likeliest data-loss event — a bad migration
+or an application bug — not disaster recovery. It does not survive pool loss. See
+the offsite backup section for that.
+
+### Pin your images in production
+
+`docker-compose.prod.yml` ships with floating tags so a fresh self-hoster gets a
+working stack. In production, pin them, so `docker compose pull` can never restart
+your database on a minor version you did not choose:
+
+```bash
+docker exec bottlevault-db postgres --version
+docker inspect --format '{{.Config.Image}}' bottlevault-tunnel
+```
+
+Set `POSTGRES_IMAGE` and `CLOUDFLARED_IMAGE` in the Dockge environment to the
+exact versions those report, and bump them deliberately. Postgres **minor**
+upgrades (16.x → 16.y) need no dump/restore; **major** upgrades do — see the
+classification table above.
+
 ---
 
 ## 2. Where your data lives (why safe updates are safe)
