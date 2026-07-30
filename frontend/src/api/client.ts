@@ -39,7 +39,24 @@ function isUnavailable(error: AxiosError): boolean {
   // Narrow before calling includes(): with a readonly number[] and a possibly
   // undefined status, `includes(error.response?.status)` is a type error the
   // moment anyone annotates this handler's parameter.
-  return error.response !== undefined && UNAVAILABLE_STATUSES.includes(error.response.status);
+  if (error.response === undefined) return false;
+  const { status, headers } = error.response;
+  if (UNAVAILABLE_STATUSES.includes(status)) return true;
+
+  // Any other 5xx with an HTML body is a server or edge failure that the
+  // maintenance Worker (edge/maintenance-worker) didn't get a chance to
+  // normalize to 503 -- e.g. a raw Cloudflare edge error (521-530, including
+  // 1033/"tunnel not running" on a cold boot) reaching the browser directly
+  // because the Worker isn't deployed in front of the tunnel yet, or simply
+  // isn't in the request path. Deliberately excludes JSON 5xx: a JSON error
+  // means the app itself answered and is reporting a real bug, which the
+  // "back shortly" banner must not paper over. Checking the HTML-ness
+  // instead of hardcoding Cloudflare's status list keeps this from silently
+  // drifting out of sync with that list again.
+  if (status >= 500) {
+    return String(headers?.['content-type'] ?? '').includes('text/html');
+  }
+  return false;
 }
 
 function retryAfterSeconds(error: AxiosError): number | null {
@@ -59,6 +76,14 @@ function looksLikeAccessWall(error: AxiosError): boolean {
   // cross-origin host that sends no CORS headers for us, so the XHR failed
   // before any body was readable. This is the common symptom, not the HTML one.
   if (!error.response) return true;
+  // A Cloudflare Access session wall is a login redirect; it never carries a
+  // 5xx. A 5xx -- HTML or not -- is a server or edge failure instead, and
+  // isUnavailable (checked first, above) is what decides whether that
+  // specific failure gets the "back shortly" banner. Without this guard, an
+  // HTML 5xx that isUnavailable doesn't recognize would land here and
+  // reload the user out of the SPA mid-outage -- the opposite of what the
+  // banner exists to prevent.
+  if (error.response.status >= 500) return false;
   const contentType = String(error.response.headers?.['content-type'] ?? '');
   return contentType.includes('text/html');
 }

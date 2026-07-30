@@ -330,6 +330,31 @@ describe('Cloudflare Access session recovery', () => {
     expect(getServiceState().unavailable).toBe(true);
   });
 
+  it('marks unavailable and does not reload on an HTML 530 (Cloudflare error 1033)', async () => {
+    // Reproduces the pre-Worker cold-boot failure: a tunnel-down origin returns
+    // a raw Cloudflare edge error page, not one of the codes
+    // edge/maintenance-worker normalizes to 503. This isn't in
+    // UNAVAILABLE_STATUSES, so it must be caught by the general "5xx with an
+    // HTML body" rule, or looksLikeAccessWall would navigate the user out of
+    // the SPA during a genuine outage.
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    handler = (config) =>
+      Promise.reject(
+        new AxiosError('Origin Down', AxiosError.ERR_BAD_RESPONSE, config, null, {
+          data: '<html><body>Error 1033</body></html>',
+          status: 530,
+          statusText: '',
+          headers: { 'content-type': 'text/html' },
+          config,
+        } as AxiosResponse)
+      );
+
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+
+    expect(reload).not.toHaveBeenCalled();
+    expect(getServiceState().unavailable).toBe(true);
+  });
+
   it('does not reload on a normal JSON 401, leaving the refresh flow alone', async () => {
     const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
     seedSession();
