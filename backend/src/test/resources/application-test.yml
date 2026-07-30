@@ -33,3 +33,11 @@ app:
   uploads:
     # Tests write to a per-JVM temp dir; cleaned up between runs via @TempDir or junit lifecycle.
     dir: ${java.io.tmpdir}/bottlevault-test-uploads
+
+management:
+  endpoint:
+    health:
+      # Tests only. Lets ReadinessProbeIntegrationTest assert that `db` is a
+      # member of the readiness group. Production leaves show-details at its
+      # `never` default so the unauthenticated probe leaks no topology.
+      show-details: always

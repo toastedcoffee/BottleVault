@@ -12,6 +12,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios';
 import apiClient from './client';
+import { getServiceState, markAvailable } from '../lib/serviceState';
 
 // Replace the transport layer: every request apiClient dispatches lands in
 // `handler` instead of the network. Rejections must be AxiosErrors carrying
@@ -199,5 +200,202 @@ describe('non-401 errors', () => {
     // Session untouched.
     expect(sessionStorage.getItem('accessToken')).toBe('stale-access');
     expect(sessionStorage.getItem('refreshToken')).toBe('refresh-1');
+  });
+});
+
+describe('degraded service detection', () => {
+  beforeEach(() => {
+    markAvailable();
+  });
+
+  it.each([502, 503, 504])('marks the service unavailable on a %i', async (status) => {
+    handler = (config) => httpError(config, status);
+
+    await expect(apiClient.get('/bottles')).rejects.toMatchObject({ response: { status } });
+
+    expect(getServiceState().unavailable).toBe(true);
+  });
+
+  it('captures Retry-After as the countdown hint', async () => {
+    handler = (config) =>
+      Promise.reject(
+        new AxiosError('Service Unavailable', AxiosError.ERR_BAD_RESPONSE, config, null, {
+          data: {}, status: 503, statusText: '', headers: { 'retry-after': '900' }, config,
+        } as AxiosResponse)
+      );
+
+    await expect(apiClient.get('/bottles')).rejects.toMatchObject({ response: { status: 503 } });
+
+    expect(getServiceState().retryAfterSeconds).toBe(900);
+  });
+
+  it.each([
+    { label: 'absent', headers: {} },
+    // A legal Retry-After form (HTTP-date) this code doesn't parse — the
+    // realistic "malformed" input, as opposed to a header that's merely missing.
+    { label: 'unparseable (an HTTP-date)', headers: { 'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT' } },
+  ])('leaves the hint null when Retry-After is $label', async ({ headers }) => {
+    handler = (config) =>
+      Promise.reject(
+        new AxiosError('Service Unavailable', AxiosError.ERR_BAD_RESPONSE, config, null, {
+          data: {}, status: 503, statusText: '', headers, config,
+        } as AxiosResponse)
+      );
+
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+
+    expect(getServiceState().retryAfterSeconds).toBeNull();
+  });
+
+  it('clears the unavailable state on the next successful response', async () => {
+    handler = (config) => httpError(config, 503);
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+    expect(getServiceState().unavailable).toBe(true);
+
+    handler = (config) => ok(config);
+    await apiClient.get('/bottles');
+
+    expect(getServiceState().unavailable).toBe(false);
+  });
+
+  it('does not mark unavailable on a 500', async () => {
+    // A 500 is a bug in a running API, not an absent one. Showing "back shortly"
+    // for an application error would be a lie.
+    handler = (config) => httpError(config, 500);
+
+    await expect(apiClient.get('/bottles')).rejects.toMatchObject({ response: { status: 500 } });
+
+    expect(getServiceState().unavailable).toBe(false);
+  });
+});
+
+describe('Cloudflare Access session recovery', () => {
+  const RELOAD_KEY = 'bv.accessReloadAt';
+
+  beforeEach(() => {
+    sessionStorage.removeItem(RELOAD_KEY);
+    markAvailable();
+  });
+
+  function networkError(config: InternalAxiosRequestConfig): Promise<AxiosResponse> {
+    // No `response` — what a cross-origin Access redirect actually produces.
+    return Promise.reject(new AxiosError('Network Error', AxiosError.ERR_NETWORK, config, null));
+  }
+
+  it('reloads when a request fails with no response at all', async () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    handler = networkError;
+
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads when the API answers with HTML instead of JSON', async () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    handler = (config) =>
+      Promise.reject(
+        new AxiosError('Unauthorized', AxiosError.ERR_BAD_REQUEST, config, null, {
+          data: '<html><body>Sign in</body></html>',
+          status: 401,
+          statusText: '',
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+          config,
+        } as AxiosResponse)
+      );
+
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads at most once per guard window', async () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    handler = networkError;
+
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+    await expect(apiClient.get('/stats')).rejects.toBeInstanceOf(AxiosError);
+
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reload on an HTML 502 from nginx', async () => {
+    // The reload-loop hazard: a 502 while the API boots is an HTML page. It must
+    // route to the maintenance banner, never to a navigation.
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    handler = (config) =>
+      Promise.reject(
+        new AxiosError('Bad Gateway', AxiosError.ERR_BAD_RESPONSE, config, null, {
+          data: '<html><body>502 Bad Gateway</body></html>',
+          status: 502,
+          statusText: '',
+          headers: { 'content-type': 'text/html' },
+          config,
+        } as AxiosResponse)
+      );
+
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+
+    expect(reload).not.toHaveBeenCalled();
+    expect(getServiceState().unavailable).toBe(true);
+  });
+
+  it('marks unavailable and does not reload on an HTML 530 (Cloudflare error 1033)', async () => {
+    // Reproduces the pre-Worker cold-boot failure: a tunnel-down origin returns
+    // a raw Cloudflare edge error page, not one of the codes
+    // edge/maintenance-worker normalizes to 503. This isn't in
+    // UNAVAILABLE_STATUSES, so it must be caught by the general "5xx with an
+    // HTML body" rule, or looksLikeAccessWall would navigate the user out of
+    // the SPA during a genuine outage.
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    handler = (config) =>
+      Promise.reject(
+        new AxiosError('Origin Down', AxiosError.ERR_BAD_RESPONSE, config, null, {
+          data: '<html><body>Error 1033</body></html>',
+          status: 530,
+          statusText: '',
+          headers: { 'content-type': 'text/html' },
+          config,
+        } as AxiosResponse)
+      );
+
+    await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+
+    expect(reload).not.toHaveBeenCalled();
+    expect(getServiceState().unavailable).toBe(true);
+  });
+
+  it('reloads again once the guard window has elapsed', async () => {
+    // Scoped tightly to this test: other tests in this file (the concurrent-
+    // refresh test) rely on a real setTimeout-based macrotask boundary, so fake
+    // timers must not leak beyond this one test.
+    vi.useFakeTimers();
+    try {
+      const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+      handler = networkError;
+
+      await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+      expect(reload).toHaveBeenCalledTimes(1);
+
+      // Past the 15s guard window (ACCESS_RELOAD_GUARD_MS in client.ts) —
+      // recovery must be allowed to fire again, not permanently disabled.
+      vi.advanceTimersByTime(15_000 + 1);
+
+      await expect(apiClient.get('/stats')).rejects.toBeInstanceOf(AxiosError);
+      expect(reload).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not reload on a normal JSON 401, leaving the refresh flow alone', async () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    seedSession();
+    failOnceWith401();
+    mockRefreshSuccess();
+
+    await apiClient.get('/bottles');
+
+    expect(reload).not.toHaveBeenCalled();
   });
 });

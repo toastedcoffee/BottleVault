@@ -40,7 +40,7 @@ class SecurityConfig(
             .authorizeHttpRequests { auth ->
                 auth
                     .requestMatchers("/api/auth/**").permitAll()
-                    .requestMatchers("/actuator/health").permitAll()
+                    .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/brands/**", "/api/products/**").permitAll()
 
                 // Only allow Swagger access when explicitly enabled
