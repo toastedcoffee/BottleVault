@@ -91,8 +91,8 @@ services:
       - "8080"
     # readiness (not plain health) is the semantically correct "can this instance
     # take traffic" probe. Requires management.endpoint.health.probes.enabled and
-    # a SecurityConfig matcher covering /actuator/health/** — both landed in the
-    # same change as this healthcheck; see ReadinessProbeIntegrationTest.
+    # a SecurityConfig matcher covering /actuator/health/** — both landed earlier
+    # on this branch; see ReadinessProbeIntegrationTest.
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health/readiness || exit 1"]
       interval: 15s

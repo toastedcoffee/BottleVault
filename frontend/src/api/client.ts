@@ -1,4 +1,4 @@
-import axios, { type AxiosError } from 'axios';
+import axios, { type AxiosError, type AxiosResponse } from 'axios';
 import { markAvailable, markUnavailable } from '../lib/serviceState';
 
 const apiClient = axios.create({
@@ -31,16 +31,20 @@ async function refreshAccessToken(refreshToken: string): Promise<string> {
 // 502/503/504 all mean "the API isn't there," and all three genuinely occur:
 // nginx emits a raw 502 while the API boots (LAN access has no Worker in front
 // of it), and the edge Worker emits a structured 503 during maintenance.
-// Treating them uniformly also keeps them off the HTML-detection path below,
-// which is what stops nginx's HTML 502 page from triggering a reload loop.
 export const UNAVAILABLE_STATUSES: readonly number[] = [502, 503, 504];
+
+// Shared by isUnavailable and looksLikeAccessWall, which both need to tell a
+// real HTML error page apart from a JSON API response.
+function isHtmlBody(response: AxiosResponse): boolean {
+  return String(response.headers?.['content-type'] ?? '').includes('text/html');
+}
 
 function isUnavailable(error: AxiosError): boolean {
   // Narrow before calling includes(): with a readonly number[] and a possibly
   // undefined status, `includes(error.response?.status)` is a type error the
   // moment anyone annotates this handler's parameter.
   if (error.response === undefined) return false;
-  const { status, headers } = error.response;
+  const { status } = error.response;
   if (UNAVAILABLE_STATUSES.includes(status)) return true;
 
   // Any other 5xx with an HTML body is a server or edge failure that the
@@ -53,8 +57,13 @@ function isUnavailable(error: AxiosError): boolean {
   // "back shortly" banner must not paper over. Checking the HTML-ness
   // instead of hardcoding Cloudflare's status list keeps this from silently
   // drifting out of sync with that list again.
+  //
+  // A 5xx with no readable content-type falls through both this check and
+  // looksLikeAccessWall's -- neither banner nor reload fires. That's
+  // deliberate: it fails toward silence rather than guessing, which is the
+  // safer of the two wrong answers when the response can't be classified.
   if (status >= 500) {
-    return String(headers?.['content-type'] ?? '').includes('text/html');
+    return isHtmlBody(error.response);
   }
   return false;
 }
@@ -84,8 +93,7 @@ function looksLikeAccessWall(error: AxiosError): boolean {
   // reload the user out of the SPA mid-outage -- the opposite of what the
   // banner exists to prevent.
   if (error.response.status >= 500) return false;
-  const contentType = String(error.response.headers?.['content-type'] ?? '');
-  return contentType.includes('text/html');
+  return isHtmlBody(error.response);
 }
 
 function recoverFromAccessWall(): void {

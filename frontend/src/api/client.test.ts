@@ -229,8 +229,18 @@ describe('degraded service detection', () => {
     expect(getServiceState().retryAfterSeconds).toBe(900);
   });
 
-  it('leaves the hint null when Retry-After is absent or unparseable', async () => {
-    handler = (config) => httpError(config, 503);
+  it.each([
+    { label: 'absent', headers: {} },
+    // A legal Retry-After form (HTTP-date) this code doesn't parse — the
+    // realistic "malformed" input, as opposed to a header that's merely missing.
+    { label: 'unparseable (an HTTP-date)', headers: { 'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT' } },
+  ])('leaves the hint null when Retry-After is $label', async ({ headers }) => {
+    handler = (config) =>
+      Promise.reject(
+        new AxiosError('Service Unavailable', AxiosError.ERR_BAD_RESPONSE, config, null, {
+          data: {}, status: 503, statusText: '', headers, config,
+        } as AxiosResponse)
+      );
 
     await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
 
@@ -353,6 +363,29 @@ describe('Cloudflare Access session recovery', () => {
 
     expect(reload).not.toHaveBeenCalled();
     expect(getServiceState().unavailable).toBe(true);
+  });
+
+  it('reloads again once the guard window has elapsed', async () => {
+    // Scoped tightly to this test: other tests in this file (the concurrent-
+    // refresh test) rely on a real setTimeout-based macrotask boundary, so fake
+    // timers must not leak beyond this one test.
+    vi.useFakeTimers();
+    try {
+      const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+      handler = networkError;
+
+      await expect(apiClient.get('/bottles')).rejects.toBeInstanceOf(AxiosError);
+      expect(reload).toHaveBeenCalledTimes(1);
+
+      // Past the 15s guard window (ACCESS_RELOAD_GUARD_MS in client.ts) —
+      // recovery must be allowed to fire again, not permanently disabled.
+      vi.advanceTimersByTime(15_000 + 1);
+
+      await expect(apiClient.get('/stats')).rejects.toBeInstanceOf(AxiosError);
+      expect(reload).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not reload on a normal JSON 401, leaving the refresh flow alone', async () => {

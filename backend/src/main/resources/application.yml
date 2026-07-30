@@ -38,7 +38,7 @@ server:
   port: ${SERVER_PORT:8080}
   # Drain in-flight requests on SIGTERM instead of cutting them. Paired with
   # stop_grace_period: 45s in docker-compose.prod.yml, which must stay ABOVE
-  # spring.lifecycle.timeout-per-shutdown-phase below or Docker SIGKILLs the
+  # spring.lifecycle.timeout-per-shutdown-phase above or Docker SIGKILLs the
   # JVM mid-drain and the graceful setting buys nothing.
   shutdown: graceful
 

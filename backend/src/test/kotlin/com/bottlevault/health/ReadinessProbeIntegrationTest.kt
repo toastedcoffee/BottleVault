@@ -40,6 +40,15 @@ class ReadinessProbeIntegrationTest : AbstractPostgresIntegrationTest() {
     }
 
     @Test
+    fun `liveness deliberately excludes the database so a DB blip does not kill a healthy process`() {
+        // Readiness includes db (see below); liveness must not. A liveness probe
+        // that fails on a transient DB blip would make an orchestrator restart
+        // an otherwise healthy process instead of just taking it out of rotation.
+        mockMvc.perform(get("/actuator/health/liveness"))
+            .andExpect(jsonPath("$.components.db").doesNotExist())
+    }
+
+    @Test
     fun `readiness includes the database so an instance with no DB is not ready`() {
         // show-details is `always` only in application-test.yml; prod keeps the
         // unauthenticated response to a bare status so it leaks nothing.

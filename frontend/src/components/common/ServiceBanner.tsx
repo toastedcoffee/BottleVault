@@ -26,9 +26,9 @@ export default function ServiceBanner() {
     <div
       role="status"
       aria-live="polite"
-      className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 mb-6 text-sm text-text-hi"
+      className="flex items-start gap-2 rounded-md border border-gold/40 bg-gold/10 px-4 py-3 mb-6 text-sm text-text-hi"
     >
-      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" aria-hidden="true" />
+      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-gold" aria-hidden="true" />
       <span>
         <strong className="font-medium">BottleVault is updating.</strong>{' '}
         {waitCopy(retryAfterSeconds)} Your collection is safe — changes you make right now
