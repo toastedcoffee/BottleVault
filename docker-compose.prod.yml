@@ -34,9 +34,17 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
     # Bind mount keeps data visible on the host for ZFS snapshots / backups.
     # Default is stack-relative, which works anywhere. On TrueNAS, override
-    # PG_DATA_PATH with a dedicated dataset (recordsize=8K, sync=standard):
-    # a `zfs snapshot` operates on datasets, not directories, so a DB sharing a
-    # dataset with your stack configs can't be rolled back on its own.
+    # PG_DATA_PATH with a dedicated dataset (sync=standard): a `zfs snapshot`
+    # operates on datasets, not directories, so a DB sharing a dataset with
+    # your stack configs can't be rolled back on its own.
+    #
+    # recordsize: match Postgres' 8K page size ONLY on mirrors. On RAIDZ a
+    # record is split across the data disks in 4K sectors, so anything below
+    # data_disks x 4K can't fill a stripe and every write pads out and pulls
+    # extra parity — 8K there costs space and performance rather than saving
+    # either. Use whatever minimum your pool reports (commonly 16K) and go
+    # higher rather than lower. recordsize applies only to newly written
+    # blocks, so it can be changed later without rewriting existing data.
     volumes:
       - ${PG_DATA_PATH:-./data/postgres}:/var/lib/postgresql/data
     # expose (not ports) — Postgres is only reachable from the internal Docker network
