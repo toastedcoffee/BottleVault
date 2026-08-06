@@ -20,8 +20,9 @@
 #                          snapshotted and rolled back independently of everything else.
 #   UPLOADS_PATH         — host path for bottle photos (default: ./data/uploads)
 #   WEB_LOG_PATH         — host path for nginx access/error logs (default: ./data/logs/nginx).
-#                          Records request line, status, referer, user-agent and
-#                          Cloudflare's country header. No IP addresses are logged.
+#                          The access log records request line, status, referer, user-agent
+#                          and Cloudflare's country header, with no IP addresses. Error-log
+#                          lines can include a client address — see DEPLOY.md.
 #   POSTGRES_IMAGE       — pin this in production; see DEPLOY.md
 #   CLOUDFLARED_IMAGE    — pin this in production; see DEPLOY.md
 
@@ -115,8 +116,9 @@ services:
     ports:
       - "${PORT:-80}:80"
     # nginx access and error logs on the host, so request history survives
-    # container rebuilds. Records the request line, status, referer, user-agent
-    # and Cloudflare's country header — no IP addresses. See DEPLOY.md.
+    # container rebuilds. The access log records the request line, status, referer,
+    # user-agent and Cloudflare's country header, with no IP addresses; error-log
+    # lines can include a client address. See DEPLOY.md.
     volumes:
       - ${WEB_LOG_PATH:-./data/logs/nginx}:/var/log/nginx
     # service_started, NOT service_healthy. The SPA is static and has no runtime

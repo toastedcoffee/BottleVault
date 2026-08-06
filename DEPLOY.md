@@ -128,17 +128,28 @@ The only way to lose data is to delete the bind mounts (or the dataset). So:
 > that offers to remove volumes or the `./data` directory. Image pulls are
 > always safe; deleting data is the only destructive act.
 
-**What the request log contains.** nginx records a line per external request:
+**What the access log contains.** nginx records a line per external request:
 timestamp, request line, status, bytes sent, referer, user-agent, and — when
 Cloudflare is in front — its two-letter country header as `cc=`. **No IP
-addresses are recorded.** Requests from the container's own healthcheck arrive
-on loopback and are excluded. Without Cloudflare the `cc=` field is empty and
-the file is an ordinary access log.
+addresses are recorded in the access log.** Requests from the container's own
+healthcheck arrive on loopback and are excluded. Without Cloudflare — or for
+any client that reaches the published port directly instead of through
+Cloudflare — the `cc=` field reads `-`, not empty, and the line is otherwise
+an ordinary access-log entry.
 
-No rotation is configured, so the file grows without bound. It is small — a few
-hundred bytes per request at most — but check it occasionally:
+The country field is only as trustworthy as the ingress path: nothing stops a
+client that reaches nginx directly, bypassing Cloudflare, from setting its own
+`CF-IPCountry` header. Read `cc=` values with more caution on a deployment
+reachable outside the tunnel.
 
-    du -h data/logs/nginx/access.log
+No rotation is configured, so the log directory grows without bound. Lines are
+small — a few hundred bytes per request at most — but check the directory
+occasionally, not just the access log: `error.log` shares the mount and grows
+fastest during exactly the outages you'd want to notice.
+
+```bash
+du -h data/logs/nginx/
+```
 
 To turn request logging off entirely, remove the `volumes:` block from the
 `frontend` service; logs then go to `docker logs` and are discarded when the
@@ -147,7 +158,10 @@ container is rebuilt.
 **Error logs.** The same mount replaces nginx's `error.log -> /dev/stderr`
 symlink, so runtime nginx errors go to `data/logs/nginx/error.log` rather than
 `docker logs`. Startup failures still reach `docker logs`, because they happen
-before the configuration is loaded.
+before the configuration is loaded. Unlike the access log, error-log entries
+can include a client network address: behind a tunnel that's the internal
+tunnel container's address (harmless), but on a deployment that publishes a
+host port directly, it can be the client's own address.
 
 ---
 
