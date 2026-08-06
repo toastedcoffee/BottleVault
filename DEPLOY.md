@@ -116,6 +116,8 @@ Nothing user-facing is stored inside a container. Per
   (on TrueNAS: `/mnt/<pool>/configs/stacks/bottlevault/data/postgres`)
 - **Bottle photos** → host bind mount `./data/uploads`
   (on TrueNAS: `/mnt/<pool>/configs/stacks/bottlevault/data/uploads`)
+- **Web request logs** → host bind mount `./data/logs/nginx`
+  (on TrueNAS: `/mnt/<pool>/configs/stacks/bottlevault/data/logs/nginx`)
 - **Sessions** are stateless JWTs validated by the backend — restarting
   containers does **not** log anyone out.
 
@@ -125,6 +127,27 @@ The only way to lose data is to delete the bind mounts (or the dataset). So:
 > **Never** run `docker compose down -v`, and never delete the stack in a way
 > that offers to remove volumes or the `./data` directory. Image pulls are
 > always safe; deleting data is the only destructive act.
+
+**What the request log contains.** nginx records a line per external request:
+timestamp, request line, status, bytes sent, referer, user-agent, and — when
+Cloudflare is in front — its two-letter country header as `cc=`. **No IP
+addresses are recorded.** Requests from the container's own healthcheck arrive
+on loopback and are excluded. Without Cloudflare the `cc=` field is empty and
+the file is an ordinary access log.
+
+No rotation is configured, so the file grows without bound. It is small — a few
+hundred bytes per request at most — but check it occasionally:
+
+    du -h data/logs/nginx/access.log
+
+To turn request logging off entirely, remove the `volumes:` block from the
+`frontend` service; logs then go to `docker logs` and are discarded when the
+container is rebuilt.
+
+**Error logs.** The same mount replaces nginx's `error.log -> /dev/stderr`
+symlink, so runtime nginx errors go to `data/logs/nginx/error.log` rather than
+`docker logs`. Startup failures still reach `docker logs`, because they happen
+before the configuration is loaded.
 
 ---
 
@@ -238,6 +261,7 @@ migration has since run — restore the matching data snapshot too.
 | Tunnel container | `bottlevault-tunnel` |
 | DB data (host) | `<stack>/data/postgres` |
 | Uploads (host) | `<stack>/data/uploads` |
+| Web logs (host) | `<stack>/data/logs/nginx` |
 | Migrations (repo) | `backend/src/main/resources/db/migration/V*.sql` |
 | Stack dir (TrueNAS) | `/mnt/<pool>/configs/stacks/bottlevault` |
 
