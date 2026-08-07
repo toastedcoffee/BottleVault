@@ -120,8 +120,14 @@ services:
     depends_on:
       backend:
         condition: service_started
+    # 127.0.0.1, NOT localhost. The image's /etc/hosts maps localhost to both
+    # 127.0.0.1 and ::1; BusyBox wget tries ::1 first and does not fall back on
+    # "Connection refused". nginx.conf has `listen 80;` only (IPv4), so every
+    # probe failed and the container sat unhealthy forever — invisible, because
+    # Docker keeps serving traffic from unhealthy containers. The cost was a cold
+    # `docker compose up` hanging at the tunnel's service_healthy gate below.
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3
