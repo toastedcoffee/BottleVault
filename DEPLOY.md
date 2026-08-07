@@ -155,6 +155,13 @@ To turn request logging off entirely, remove the `volumes:` block from the
 `frontend` service; logs then go to `docker logs` and are discarded when the
 container is rebuilt.
 
+If `frontend` won't come up after setting `WEB_LOG_PATH`, check
+`docker logs bottlevault-web` for an nginx permission error on
+`/var/log/nginx` — an unwritable or misconfigured log path makes nginx exit at
+startup. Because `tunnel` waits on `frontend: condition: service_healthy`, a
+bad path won't just log an error; it stalls a cold `docker compose up` at the
+tunnel gate and can look like a hang.
+
 **Error logs.** The same mount replaces nginx's `error.log -> /dev/stderr`
 symlink, so runtime nginx errors go to `data/logs/nginx/error.log` rather than
 `docker logs`. Startup failures still reach `docker logs`, because they happen
