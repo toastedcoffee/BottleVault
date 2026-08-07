@@ -172,7 +172,7 @@ zfs snapshot -r <pool>/configs/stacks/bottlevault@pre-update-$(date +%Y%m%d-%H%M
 [`docker-compose.prod.yml`](docker-compose.prod.yml) and put the database on its
 own dataset** — and the same applies if uploads live on one. `zfs snapshot`
 without `-r` captures a single dataset, so on that layout it would snapshot the
-empty parent and neither the database nor the photos. The command still reports
+parent alone and neither the database nor the photos. The command still reports
 success. You would discover the backup was empty at the moment you needed it.
 
 Recursive snapshots are taken atomically, so DB and photos still correspond to
@@ -216,28 +216,41 @@ previous image tag and `up -d`. Prefer deploying by immutable `:<tag>` over
 
 **Bad migration or data corruption:** roll back the ZFS snapshot taken in §4.
 
+**If the database and uploads are on their own datasets, the single command
+below is not enough** — use the per-dataset commands that follow it instead.
+
 ```bash
 docker compose -f docker-compose.prod.yml down          # stop writers first (NO -v)
+# Only sufficient on an undivided stack dataset. If postgres/uploads have
+# their own datasets, use the per-dataset commands below instead.
 zfs rollback <pool>/configs/stacks/bottlevault@pre-update-YYYYMMDD-HHMM
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-**If the database and uploads are on their own datasets, that single command is
-not enough.** `zfs rollback` has no option to descend into child datasets — its
-`-r` and `-R` flags mean "destroy newer snapshots", not "recurse", which is an
-easy and expensive thing to misread. Roll back each dataset that holds data,
-naming the same snapshot on each:
+`zfs rollback` has no option to descend into child datasets — its `-r` and
+`-R` flags mean "destroy newer snapshots", not "recurse", which is an easy and
+expensive thing to misread. Roll back each dataset that holds data, naming the
+same snapshot on each:
 
 ```bash
 docker compose -f docker-compose.prod.yml down          # stop writers first (NO -v)
-zfs rollback <pool>/configs/stacks/bottlevault/postgres@pre-update-YYYYMMDD-HHMM
-zfs rollback <pool>/configs/stacks/bottlevault/uploads@pre-update-YYYYMMDD-HHMM
+zfs rollback <pool>/configs/stacks/bottlevault/data/postgres@pre-update-YYYYMMDD-HHMM
+zfs rollback <pool>/configs/stacks/bottlevault/data/uploads@pre-update-YYYYMMDD-HHMM
 docker compose -f docker-compose.prod.yml up -d
 ```
 
 Unlike the snapshot, this is **not atomic** — the datasets are restored one at a
 time. That is harmless here because every writer is stopped first, which is why
 `down` comes before the rollbacks rather than after. Do not skip it.
+
+**If any snapshot newer than the target exists, every command above will
+refuse** with `cannot rollback to '...': more recent snapshots or bookmarks
+exist`. TrueNAS periodic snapshot tasks make this the common case, not the
+exception. The fix is `-r` on the *rollback* — unlike `-r` on `zfs snapshot`,
+which means "recurse into child datasets", `-r` on `zfs rollback` destroys
+every snapshot newer than the target. That is the intended outcome here: you
+are deliberately discarding everything created after the pre-update snapshot
+in order to revert to it.
 
 List what you actually have before rolling back, so a dataset you forgot does
 not survive the restore holding post-migration data:
