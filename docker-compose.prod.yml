@@ -19,6 +19,10 @@
 #                          On ZFS, point this at a DEDICATED dataset so the DB can be
 #                          snapshotted and rolled back independently of everything else.
 #   UPLOADS_PATH         — host path for bottle photos (default: ./data/uploads)
+#   WEB_LOG_PATH         — host path for nginx access/error logs (default: ./data/logs/nginx).
+#                          The access log records request line, status, referer, user-agent
+#                          and Cloudflare's country header, with no IP addresses. Error-log
+#                          lines can include a client address — see DEPLOY.md.
 #   POSTGRES_IMAGE       — pin this in production; see DEPLOY.md
 #   CLOUDFLARED_IMAGE    — pin this in production; see DEPLOY.md
 
@@ -117,6 +121,12 @@ services:
     # The only service bound to a host port — serves the React app and proxies /api/ to backend
     ports:
       - "${PORT:-80}:80"
+    # nginx access and error logs on the host, so request history survives
+    # container rebuilds. The access log records the request line, status, referer,
+    # user-agent and Cloudflare's country header, with no IP addresses; error-log
+    # lines can include a client address. See DEPLOY.md.
+    volumes:
+      - ${WEB_LOG_PATH:-./data/logs/nginx}:/var/log/nginx
     # service_started, NOT service_healthy. The SPA is static and has no runtime
     # dependency on the API to render. Gating it on backend health meant a backend
     # problem took down the very shell that could explain the backend problem, and

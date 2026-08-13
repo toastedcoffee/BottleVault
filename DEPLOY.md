@@ -116,6 +116,8 @@ Nothing user-facing is stored inside a container. Per
   (on TrueNAS: `/mnt/<pool>/configs/stacks/bottlevault/data/postgres`)
 - **Bottle photos** → host bind mount `./data/uploads`
   (on TrueNAS: `/mnt/<pool>/configs/stacks/bottlevault/data/uploads`)
+- **Web request logs** → host bind mount `./data/logs/nginx`
+  (on TrueNAS: `/mnt/<pool>/configs/stacks/bottlevault/data/logs/nginx`)
 - **Sessions** are stateless JWTs validated by the backend — restarting
   containers does **not** log anyone out.
 
@@ -125,6 +127,48 @@ The only way to lose data is to delete the bind mounts (or the dataset). So:
 > **Never** run `docker compose down -v`, and never delete the stack in a way
 > that offers to remove volumes or the `./data` directory. Image pulls are
 > always safe; deleting data is the only destructive act.
+
+**What the access log contains.** nginx records a line per external request:
+timestamp, request line, status, bytes sent, referer, user-agent, and — when
+Cloudflare is in front — its two-letter country header as `cc=`. **No IP
+addresses are recorded in the access log.** Requests from the container's own
+healthcheck arrive on loopback and are excluded. Without Cloudflare — or for
+any client that reaches the published port directly instead of through
+Cloudflare — the `cc=` field reads `-`, not empty, and the line is otherwise
+an ordinary access-log entry.
+
+The country field is only as trustworthy as the ingress path: nothing stops a
+client that reaches nginx directly, bypassing Cloudflare, from setting its own
+`CF-IPCountry` header. Read `cc=` values with more caution on a deployment
+reachable outside the tunnel.
+
+No rotation is configured, so the log directory grows without bound. Lines are
+small — a few hundred bytes per request at most — but check the directory
+occasionally, not just the access log: `error.log` shares the mount and grows
+fastest during exactly the outages you'd want to notice.
+
+```bash
+du -h data/logs/nginx/
+```
+
+To turn request logging off entirely, remove the `volumes:` block from the
+`frontend` service; logs then go to `docker logs` and are discarded when the
+container is rebuilt.
+
+If `frontend` won't come up after setting `WEB_LOG_PATH`, check
+`docker logs bottlevault-web` for an nginx permission error on
+`/var/log/nginx` — an unwritable or misconfigured log path makes nginx exit at
+startup. Because `tunnel` waits on `frontend: condition: service_healthy`, a
+bad path won't just log an error; it stalls a cold `docker compose up` at the
+tunnel gate and can look like a hang.
+
+**Error logs.** The same mount replaces nginx's `error.log -> /dev/stderr`
+symlink, so runtime nginx errors go to `data/logs/nginx/error.log` rather than
+`docker logs`. Startup failures still reach `docker logs`, because they happen
+before the configuration is loaded. Unlike the access log, error-log entries
+can include a client network address: behind a tunnel that's the internal
+tunnel container's address (harmless), but on a deployment that publishes a
+host port directly, it can be the client's own address.
 
 ---
 
@@ -284,6 +328,7 @@ migration has since run — restore the matching data snapshot too.
 | Tunnel container | `bottlevault-tunnel` |
 | DB data (host) | `<stack>/data/postgres` |
 | Uploads (host) | `<stack>/data/uploads` |
+| Web logs (host) | `<stack>/data/logs/nginx` |
 | Migrations (repo) | `backend/src/main/resources/db/migration/V*.sql` |
 | Stack dir (TrueNAS) | `/mnt/<pool>/configs/stacks/bottlevault` |
 
