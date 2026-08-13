@@ -38,13 +38,11 @@ services:
     # operates on datasets, not directories, so a DB sharing a dataset with
     # your stack configs can't be rolled back on its own.
     #
-    # recordsize: match Postgres' 8K page size ONLY on mirrors. On RAIDZ a
-    # record is split across the data disks in 4K sectors, so anything below
-    # data_disks x 4K can't fill a stripe and every write pads out and pulls
-    # extra parity — 8K there costs space and performance rather than saving
-    # either. Use whatever minimum your pool reports (commonly 16K) and go
-    # higher rather than lower. recordsize applies only to newly written
-    # blocks, so it can be changed later without rewriting existing data.
+    # recordsize: use the minimum your pool reports (TrueNAS shows it when you
+    # edit the dataset), rounding up rather than down. Matching Postgres' 8K
+    # page only pays off where a record is stored whole; on RAIDZ a sub-stripe
+    # record pads out and costs more than the alignment saves. Applies to newly
+    # written blocks only, so it can be changed later.
     volumes:
       - ${PG_DATA_PATH:-./data/postgres}:/var/lib/postgresql/data
     # expose (not ports) — Postgres is only reachable from the internal Docker network
