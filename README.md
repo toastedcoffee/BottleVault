@@ -1,4 +1,4 @@
-# BottleVault
+# BottleVault™
 
 A personal spirits and bottle inventory management web application. Track your collection, scan barcodes to add bottles, and explore your drinking habits through statistics.
 
@@ -154,4 +154,23 @@ bottlevault/
 
 ## License
 
-MIT
+BottleVault is licensed under the **GNU Affero General Public License v3.0**
+(`AGPL-3.0-only`). See [LICENSE](LICENSE) for the full text.
+
+**What this means in practice:**
+
+- You may self-host BottleVault for personal or internal use.
+- You may modify it and share your modifications.
+- If you run a modified version as a **network service** that other people
+  use, AGPL section 13 requires you to offer those users the complete
+  corresponding source of your modified version.
+
+**Commercial licensing.** If you want to use BottleVault in a product or hosted
+service without the AGPL's source-disclosure obligations, a separate commercial
+license is available. Open an issue to inquire.
+
+**Trademarks.** The BottleVault name, logo, wordmark, crest, and visual identity
+are **not** covered by this license and no rights to them are granted by it.
+See [TRADEMARKS.md](TRADEMARKS.md).
+
+Copyright (C) 2025-2026 toastedcoffee
