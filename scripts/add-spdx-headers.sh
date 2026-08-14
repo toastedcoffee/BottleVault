@@ -64,13 +64,16 @@ header_for() {
 apply_header() {
   local f="$1" style hdr tmp
   style="$(comment_style "$f")"
+  # Command substitution strips trailing newlines, so `hdr` loses the newline
+  # after the final header line. It is restored by the `\n` in the printf
+  # below; without it the file's original first line fuses onto the header.
   hdr="$(header_for "$style")"
   tmp="$(mktemp)"
   if head -1 "$f" | grep -q '^#!'; then
     # Shebang must stay on line 1 or the script stops being executable.
-    { head -1 "$f"; printf '%s' "$hdr"; tail -n +2 "$f"; } > "$tmp"
+    { head -1 "$f"; printf '%s\n' "$hdr"; tail -n +2 "$f"; } > "$tmp"
   else
-    { printf '%s' "$hdr"; cat "$f"; } > "$tmp"
+    { printf '%s\n' "$hdr"; cat "$f"; } > "$tmp"
   fi
   # Write through the original inode rather than mv, to preserve the file mode
   # (notably the executable bit on scripts/*.sh).
