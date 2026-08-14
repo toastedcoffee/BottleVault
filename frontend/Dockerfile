@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 FROM node:26-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./

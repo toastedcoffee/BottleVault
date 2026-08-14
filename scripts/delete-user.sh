@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 # delete-user.sh — Permanently delete a BottleVault user and all their bottles
 #
 # Usage:

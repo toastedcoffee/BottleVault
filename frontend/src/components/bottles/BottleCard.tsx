@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import { useNavigate } from 'react-router-dom';
 import type { BottleResponse } from '../../types/bottle';
 import StatusDropdown from './StatusDropdown';

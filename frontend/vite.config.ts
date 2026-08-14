@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 

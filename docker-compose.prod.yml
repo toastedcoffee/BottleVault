@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 # BottleVault Production Compose — for Dockge / TrueNAS / home servers.
 # Uses pre-built images from GitHub Container Registry (no source code needed).
 #
