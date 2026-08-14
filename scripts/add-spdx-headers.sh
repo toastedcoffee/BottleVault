@@ -17,7 +17,12 @@
 #
 # Exit codes:
 #   0  every file in scope carries a header
-#   1  --check only: one or more files are missing a header
+#   1  normally means --check found one or more files missing a header. It is
+#      also bash's catch-all status, so an unexpected `set -e` abort surfaces
+#      as 1 too and is indistinguishable from the missing-header result. That
+#      ambiguity is why the MIN_SCOPE floor below exists: it converts the most
+#      likely silent-breakage mode (an enumeration that matches nothing) into
+#      a loud exit 2 rather than letting it hide inside exit 1.
 #   2  the tool itself is broken (not in a git repo, scope implausibly small,
 #      or an unmapped comment style) -- never treat this as a clean result
 
@@ -68,7 +73,11 @@ INCLUDE_RE='^(backend/src/.*\.kt|backend/src/.*/application.*\.yml|backend/(buil
 #   -- SPDX-License-Identifier: AGPL-3.0-only
 #   -- SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 # Never run `flyway repair` to work around a checksum mismatch caused by a header.
-EXCLUDE_RE='(^backend/src/.*/db/migration/|^backend/gradlew|^backend/gradle/wrapper/)'
+#
+# The migration alternative is anchored on the `db/migration/` path segment
+# itself rather than on a `backend/src/...` prefix, so it keeps holding if the
+# tree is ever restructured (`backend/src/db/migration/`, `db/migration/`, ...).
+EXCLUDE_RE='((^|/)db/migration/|^backend/gradlew|^backend/gradle/wrapper/)'
 
 comment_style() {
   case "$1" in
@@ -93,6 +102,15 @@ apply_header() {
   local f="$1" style tmp
   style="$(comment_style "$f")"
   tmp="$(mktemp)"
+  # This RETURN trap is safe ONLY because bash's `functrace` option is off:
+  # without it, RETURN traps are not inherited by nested functions, so the
+  # header_for calls below do not fire it. Adding `set -T` (or `set -euET`,
+  # a common hardening idiom) would turn it on and the trap would delete $tmp
+  # mid-write, on header_for's return. Do not add `set -T` without reworking
+  # this cleanup first.
+  #
+  # Note also that RETURN does not run when `set -e` or `exit` terminates the
+  # shell -- only an EXIT trap would -- so $tmp still leaks on the abort path.
   trap 'rm -f "$tmp"' RETURN
   # header_for is called directly, never through command substitution: `$(...)`
   # strips trailing newlines, which previously fused each file's original first
@@ -112,9 +130,16 @@ apply_header() {
 # is running somewhere unexpected -- NOT that everything is already headered.
 # Without this floor both conditions exit 0 and look identical, which would make
 # `--check` useless as a CI gate.
+#
+# `grep` exits 1 when it matches nothing, and with `set -o pipefail` that status
+# propagates out of the pipeline. In a command substitution that forms an entire
+# simple command, `set -e` would then kill the script right here -- before the
+# floor below could report anything -- exiting 1 with no diagnostic at all, i.e.
+# masquerading as the ordinary "missing header" result. `|| true` per grep keeps
+# an empty match a legitimate value (scope 0) so the floor can catch it loudly.
 MIN_SCOPE=100
 
-scope_count="$(git ls-files | grep -E "$INCLUDE_RE" | grep -vE "$EXCLUDE_RE" | wc -l | tr -d ' ')"
+scope_count="$(git ls-files | { grep -E "$INCLUDE_RE" || true; } | { grep -vE "$EXCLUDE_RE" || true; } | wc -l | tr -d ' ')"
 
 if [ "$scope_count" -lt "$MIN_SCOPE" ]; then
   echo "ERROR: only $scope_count files matched (expected at least $MIN_SCOPE)." >&2
@@ -135,7 +160,9 @@ while IFS= read -r f; do
     apply_header "$f"
     echo "headered: $f"
   fi
-done < <(git ls-files | grep -E "$INCLUDE_RE" | grep -vE "$EXCLUDE_RE")
+# Same `|| true` treatment as the scope_count pipeline above, so the two
+# enumerations cannot diverge in their behaviour on an empty match.
+done < <(git ls-files | { grep -E "$INCLUDE_RE" || true; } | { grep -vE "$EXCLUDE_RE" || true; })
 
 echo "---"
 echo "files in scope:        $scope_count"
