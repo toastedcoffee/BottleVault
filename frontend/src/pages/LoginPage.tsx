@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '../context/useAuth';
 import { Wine } from 'lucide-react';
 import InlineError from '../components/common/InlineError';
+import SourceOffer from '../components/common/SourceOffer';
 
 export default function LoginPage() {
   const { login, register } = useAuth();
@@ -114,6 +115,10 @@ export default function LoginPage() {
               {isRegistering ? 'Already have an account? Sign in' : "Don't have an account? Register"}
             </button>
           </div>
+        </div>
+
+        <div className="mt-6">
+          <SourceOffer />
         </div>
       </div>
     </div>
