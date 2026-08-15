@@ -32,8 +32,17 @@ ID_LINE='SPDX-License-Identifier: AGPL-3.0-only'
 COPY_LINE='SPDX-FileCopyrightText: 2025-2026 toastedcoffee'
 
 CHECK_ONLY=0
-if [ "${1:-}" = "--check" ]; then
-  CHECK_ONLY=1
+case "${1:-}" in
+  --check) CHECK_ONLY=1 ;;
+  '')      ;;
+  *)       echo "ERROR: unknown argument '$1'" >&2
+           echo "Usage: $0 [--check]" >&2
+           exit 2 ;;
+esac
+if [ "$#" -gt 1 ]; then
+  echo "ERROR: too many arguments; expected at most one" >&2
+  echo "Usage: $0 [--check]" >&2
+  exit 2
 fi
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
@@ -150,7 +159,12 @@ fi
 changed=0
 while IFS= read -r f; do
   [ -f "$f" ] || continue
-  if grep -q 'SPDX-License-Identifier' "$f"; then
+  # Only check the top of the file, not the whole body: a file that merely
+  # mentions the string "SPDX-License-Identifier" somewhere in its content
+  # (e.g. a string literal in a licensing helper) must not be mistaken for
+  # a file that already carries a real header. 5 lines gives margin for a
+  # shebang pushing the header to lines 2-3, without reaching into bodies.
+  if head -5 "$f" | grep -q 'SPDX-License-Identifier'; then
     continue
   fi
   changed=$((changed + 1))
