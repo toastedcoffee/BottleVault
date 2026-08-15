@@ -45,7 +45,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <Wine className="w-12 h-12 text-primary mx-auto" />
           <h1 className="font-display mt-4 text-2xl font-bold">
-            <span className="text-text-hi">Bottle</span><span className="text-primary-bright">Vault</span>
+            <span className="text-text-hi">Bottle</span><span className="text-primary-bright">Vault™</span>
           </h1>
           <p className="mt-1 text-sm text-text-mid">Manage your bottle collection</p>
         </div>

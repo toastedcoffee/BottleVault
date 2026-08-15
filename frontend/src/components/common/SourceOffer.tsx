@@ -23,7 +23,7 @@ export default function SourceOffer() {
 
   return (
     <p className="text-xs text-text-low text-center">
-      BottleVault™ — AGPL-3.0-only —{' '}
+      BottleVault — AGPL-3.0-only —{' '}
       <a
         href={isPinned ? `${REPO_URL}/tree/${sha}` : REPO_URL}
         target="_blank"

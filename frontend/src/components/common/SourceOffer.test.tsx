@@ -47,10 +47,10 @@ describe('SourceOffer', () => {
     expect(container.textContent).not.toContain('undefined');
   });
 
-  it('states the licence and marks the wordmark', () => {
+  it('states the licence and carries no trademark mark of its own', () => {
     const { container } = render(<SourceOffer />);
 
-    expect(container.textContent).toContain('BottleVault™');
+    expect(container.textContent).not.toContain('\u2122');
     expect(container.textContent).toContain('AGPL-3.0-only');
     expect(container.textContent).not.toContain('-or-later');
   });
