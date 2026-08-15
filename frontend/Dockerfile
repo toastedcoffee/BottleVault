@@ -5,6 +5,12 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci || npm install
 COPY . .
+# AGPL section 13: bake the running commit into the bundle so the in-app source
+# link points at the exact tree this image was built from. Declared here rather
+# than before `npm ci` so a new commit does not invalidate the dependency layer
+# cache. Defaults to 'dev' so a build without the arg still succeeds.
+ARG GIT_SHA=dev
+ENV VITE_GIT_SHA=$GIT_SHA
 RUN npm run build
 
 FROM nginx:alpine
