@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import type { BottleStatus } from '../../types/bottle';
 
 const statusConfig: Record<BottleStatus, { label: string; classes: string }> = {

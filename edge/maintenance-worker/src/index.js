@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import MAINTENANCE_HTML from './maintenance.html';
 
 // Cloudflare surfaces tunnel-down and origin-down as these. 530 is the

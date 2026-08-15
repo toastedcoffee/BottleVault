@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import InlineError from './InlineError';

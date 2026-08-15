@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import { useMutation } from '@tanstack/react-query';
 import { userApi, type UpdateProfileRequest, type ChangePasswordRequest } from '../api/user.api';
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 plugins {
     // Pinned: 1.0.0 (proposed by dependabot 2026-04-22) does not resolve on the Gradle Plugin Portal.
     id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"

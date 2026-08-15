@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import apiClient from './client';
 import type { BottleResponse, BottleCreateRequest, BottleUpdateRequest, PageResponse } from '../types/bottle';
 import type { BottleStatus } from '../types/bottle';

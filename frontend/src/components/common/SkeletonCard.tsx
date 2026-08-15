@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`bg-surface-2 rounded-sm animate-pulse ${className}`} />;
 }
