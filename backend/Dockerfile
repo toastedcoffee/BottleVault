@@ -7,6 +7,9 @@ COPY src ./src
 RUN gradle bootJar --no-daemon
 
 FROM eclipse-temurin:21-jre-alpine
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+LABEL org.opencontainers.image.source="https://github.com/toastedcoffee/BottleVault"
+LABEL org.opencontainers.image.title="BottleVault"
 WORKDIR /app
 COPY --from=build /app/build/libs/*.jar app.jar
 EXPOSE 8080
