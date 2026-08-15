@@ -39,6 +39,14 @@ describe('SourceOffer', () => {
     expect(screen.getByRole('link', { name: 'Source' })).toHaveAttribute('href', REPO);
   });
 
+  it('falls back to the repo root when the SHA is whitespace-only', () => {
+    vi.stubEnv('VITE_GIT_SHA', '   ');
+
+    render(<SourceOffer />);
+
+    expect(screen.getByRole('link', { name: 'Source' })).toHaveAttribute('href', REPO);
+  });
+
   it('never renders the string undefined', () => {
     vi.stubEnv('VITE_GIT_SHA', '');
 

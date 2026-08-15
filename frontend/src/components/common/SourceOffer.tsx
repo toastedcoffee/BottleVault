@@ -18,7 +18,7 @@ const REPO_URL = 'https://github.com/toastedcoffee/BottleVault';
  * This link is a licence obligation. Do not remove it.
  */
 export default function SourceOffer() {
-  const sha = import.meta.env.VITE_GIT_SHA || 'dev';
+  const sha = (import.meta.env.VITE_GIT_SHA ?? '').trim() || 'dev';
   const isPinned = sha !== 'dev';
 
   return (

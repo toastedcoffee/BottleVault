@@ -7,3 +7,8 @@ node_modules
 dist
 .git
 *.tsbuildinfo
+
+# The build context is separate from git: an untracked .env.local would still
+# enter the image build stage, and Vite inlines any VITE_-prefixed value into
+# the shipped client bundle.
+.env*
