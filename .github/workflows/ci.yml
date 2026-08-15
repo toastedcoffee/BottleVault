@@ -108,6 +108,7 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           docker build \
+            --build-arg GIT_SHA="$SHA" \
             -t "ghcr.io/toastedcoffee/bottlevault-web:$TAG" \
             -t "ghcr.io/toastedcoffee/bottlevault-web:$SHA" \
             ./frontend
