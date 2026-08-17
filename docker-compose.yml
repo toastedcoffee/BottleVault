@@ -54,6 +54,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # Self-hosters building from source get 'dev' and a repo-root source
+        # link. Set GIT_SHA in .env to pin the AGPL section 13 offer to a commit.
+        GIT_SHA: ${GIT_SHA:-dev}
     container_name: bottlevault-web
     ports:
       - "${PORT:-80}:80"

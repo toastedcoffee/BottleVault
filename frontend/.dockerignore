@@ -1,0 +1,14 @@
+# Host build output must never enter the image build context. `COPY . .` would
+# otherwise overwrite the Alpine-installed node_modules with Windows-native
+# binaries (notably lightningcss-win32-x64-msvc), breaking `npm run build`
+# inside the container. CI only escapes this because a fresh runner checkout
+# has no node_modules.
+node_modules
+dist
+.git
+*.tsbuildinfo
+
+# The build context is separate from git: an untracked .env.local would still
+# enter the image build stage, and Vite inlines any VITE_-prefixed value into
+# the shipped client bundle.
+.env*

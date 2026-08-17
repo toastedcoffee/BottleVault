@@ -6,6 +6,7 @@ import { useAuth } from '../../context/useAuth';
 import { Wine, LogOut, Plus, Menu, X, Settings, BarChart3 } from 'lucide-react';
 import LoadingSpinner from '../common/LoadingSpinner';
 import ServiceBanner from '../common/ServiceBanner';
+import SourceOffer from '../common/SourceOffer';
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
@@ -37,7 +38,7 @@ export default function AppLayout() {
               <Link to="/inventory" className="flex items-center gap-2">
                 <Wine className="w-6 h-6 text-primary" />
                 <span className="font-display font-semibold text-xl tracking-tight">
-                  <span className="text-text-hi">Bottle</span><span className="text-primary-bright">Vault</span>
+                  <span className="text-text-hi">Bottle</span><span className="text-primary-bright">Vault™</span>
                 </span>
               </Link>
               <div className="hidden sm:flex gap-1">
@@ -129,6 +130,12 @@ export default function AppLayout() {
           <Outlet />
         </Suspense>
       </main>
+
+      <footer className="border-t border-border mt-8 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <SourceOffer />
+        </div>
+      </footer>
     </div>
   );
 }
