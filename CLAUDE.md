@@ -118,3 +118,75 @@ For updating a running instance safely — which changes need a backup, which
 cause downtime, and the backup/restore commands — see [DEPLOY.md](DEPLOY.md).
 A change is backup-required if and only if it adds a file under
 `backend/src/main/resources/db/migration/`.
+
+## Licensing conventions
+
+This repo is **AGPL-3.0-only** — full text in `LICENSE`, notice in `COPYRIGHT`.
+Trademark terms live in `TRADEMARKS.md` and are **not** covered by the AGPL.
+**Never reintroduce "MIT" anywhere in the repo.**
+
+The Flyway rule comes first, because getting it wrong takes prod down:
+**never add an SPDX header to a migration that has already been applied to a
+live database.** Flyway checksums whole file content, so a header changes the
+checksum, fails validation on the next startup, and takes the API down. `V1`-`V6`
+are applied. **Never run `flyway repair`.** New migrations get their header
+*before* they are first applied — and migrations stay out of the sweep script by
+an explicit `EXCLUDE_RE` gate, not merely by omission from `INCLUDE_RE`.
+
+Every new first-party source file gets an SPDX header, two lines:
+`SPDX-License-Identifier: AGPL-3.0-only` and
+`SPDX-FileCopyrightText: 2025-2026 toastedcoffee`.
+- `bash scripts/add-spdx-headers.sh --check` lists files missing one; without
+  `--check` it adds them. It is idempotent.
+- The scripts are mode `100644` (not executable) on this Windows-managed repo,
+  so **invoke as `bash scripts/add-spdx-headers.sh`**, not
+  `./scripts/add-spdx-headers.sh`.
+- Exit codes: `0` = clean (nothing missing), `1` = files missing headers,
+  `2` = **broken tool** (e.g. scope collapsed to near-zero — a floor that
+  catches the tool silently finding nothing rather than reporting a false clean).
+- `EXCLUDE_RE` (migrations, `gradlew`, wrapper files) is a **hard gate that
+  `INCLUDE_RE` cannot override**. That is what makes the Flyway mistake above
+  structurally hard to reintroduce, even if someone later edits `INCLUDE_RE`
+  carelessly.
+- **CSS uses `/* ... */`** for the header, never `//` — `//` is not valid CSS
+  and breaks the build.
+- Latent bug worth remembering if scope ever changes: the idempotency check does
+  `head -5 "$f" | grep -q ...`. If a file ever holds more than ~64KB within its
+  first 5 lines, `grep -q` can exit on match while `head` is still writing,
+  `head` dies with SIGPIPE (exit 141), and `pipefail` propagates that as a false
+  condition — re-applying a header to an already-headered file. Unreachable
+  today (the largest real first-5-lines payload here is 345 bytes, three orders
+  of magnitude below the threshold); it goes live the moment minified CSS or a
+  bundled `edge/*.js` file enters `INCLUDE_RE` scope.
+
+Dockerfiles have two licensing-adjacent traps:
+- `# syntax=` and `# escape=` parser directives must precede **all** content,
+  comments included. The SPDX header now occupies lines 1-2 of both Dockerfiles,
+  so a directive added below it is silently ignored — if one is ever needed, it
+  goes *above* the SPDX header.
+- The frontend build injects the commit SHA via the Docker build arg `GIT_SHA`
+  into `VITE_GIT_SHA`. Keep `ARG GIT_SHA` **inside the build stage that consumes
+  it** (the `FROM ... AS build` stage, above the build `RUN`). An `ARG` declared
+  outside that stage is invisible to it, and the frontend silently ships the
+  `dev` sentinel instead of the real commit SHA — with no error.
+
+The AGPL section 13 source link in the app UI is a **compliance requirement, not
+decoration**. `SourceOffer.tsx` renders on the login page and in the app shell
+footer; it **must stay reachable while logged out**. Do not remove it.
+
+Trademark usage:
+- Use `™` (U+2122) at first prominent use on branding surfaces only — never `®`,
+  and never in variable names, package names, database values, or API responses.
+- **A shared component carries no mark; each surface marks its own most
+  prominent wordmark once.** The app shell nav and the login page count as
+  separate surfaces (a logged-out user never sees the nav), so the nav wordmark
+  and the login `<h1>` wordmark each carry `™`, while `SourceOffer.tsx` — mounted
+  on both — carries none. Follow the same pattern for any future shared component
+  that touches branding text. This supersedes the original relicensing plan.
+- `TRADEMARKS.md:7` reads "the AGPL-3.0 license" in prose, where everywhere else
+  the SPDX identifier is always `AGPL-3.0-only`. That line is a **deliberate,
+  maintainer-approved prose exception — do not "fix" it.**
+
+New dependencies must themselves be MIT, BSD, ISC, Apache-2.0, or another
+AGPL-compatible license. **Flag GPL-2.0-only, LGPL, MPL, EPL, SSPL, or BUSL
+before adding.**
