@@ -57,5 +57,11 @@ build
 .claude
 .superpowers
 .git
+
+# IDE / toolchain state. Unlike the three entries above, these exist at the repo
+# root AND at depth (backend/.idea and backend/.kotlin both exist on this host),
+# so they get the same bare + `**/` pair treatment as the build-output group.
 .idea
+**/.idea
 .kotlin
+**/.kotlin
