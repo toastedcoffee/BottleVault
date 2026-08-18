@@ -139,9 +139,14 @@ The reason is a licence obligation (see Licensing conventions below); do not
   steps) and `docker-compose.yml` (**both** services — `backend` *and*
   `frontend`; changing only one is the easy miss, and the mistake the original
   plan for this work made).
-- Every host-path `COPY` in both Dockerfiles carries a `backend/` or `frontend/`
-  prefix; one written against the old subdirectory now fails. Easily missed:
-  `COPY frontend/nginx.conf` sits in the *final* stage, below the second `FROM`.
+- Every host-path `COPY` that *used to be* relative to the old subdirectory now
+  carries a `backend/` or `frontend/` prefix; one written without it fails.
+  Easily missed: `COPY frontend/nginx.conf` sits in the *final* stage, below the
+  second `FROM`. The unprefixed copies are deliberate, not an oversight — the
+  three licence files live at the repo root, so
+  `COPY LICENSE COPYRIGHT TRADEMARKS.md …` is root-relative in both Dockerfiles
+  by design. Do not "consistency-fix" it to `backend/LICENSE`: that path does
+  not exist and the build fails.
 - The `.dockerignore` that matters is the **root** one. Docker reads only the
   file at the context root, so a subdirectory one is inert — silently, no
   warning, no error. `frontend/.dockerignore` is gone and its rules are folded
