@@ -1,0 +1,61 @@
+# Docker reads the .dockerignore at the *context root* only. Both images now
+# build from a root context (`docker build -f backend/Dockerfile .`) so the
+# repo-root LICENSE, COPYRIGHT and TRADEMARKS.md are inside the context. That
+# means this is the only .dockerignore Docker reads: the former
+# frontend/.dockerignore stopped applying the moment the context moved, with no
+# warning and no error, so its two rules were folded in here. The backend
+# context grew the same way -- from ./backend to the whole repo -- so this file
+# is also what keeps that build from dragging the entire working tree in.
+#
+# Pattern scoping: patterns are relative to the context root, so a bare
+# `node_modules` matches only a *top-level* node_modules, NOT
+# frontend/node_modules. Anything that can appear at depth is therefore listed
+# with a `**/` prefix. Docker's `**` is documented to match zero or more path
+# segments, which should make `**/x` cover a top-level `x` as well -- but we do
+# not rely on that assumption: where it matters, both the bare and the `**/`
+# form are listed. A redundant pattern is harmless; a missing one is a silent
+# regression. Patterns match whole path components, so `build` matches a
+# directory named exactly `build` and never the file backend/build.gradle.kts.
+
+# --- Host build output (was frontend/.dockerignore) ---------------------------
+# Must never enter the image build context. The frontend build's `COPY` would
+# otherwise overwrite the Alpine-installed node_modules with Windows-native
+# binaries (notably lightningcss-win32-x64-msvc), breaking `npm run build`
+# inside the container. CI only escapes this because a fresh runner checkout has
+# no node_modules -- on a developer machine it fails every time. Do not delete
+# these lines.
+node_modules
+**/node_modules
+dist
+**/dist
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Backend host build output, same reasoning: backend/build/ and backend/.gradle/
+# exist on the host and are worthless (and large) inside the context.
+# `.gradle` is a distinct path component from the wrapper directory `gradle`,
+# which the backend build still needs, so `gradle/` is deliberately not ignored.
+build
+**/build
+.gradle
+**/.gradle
+
+# --- Environment files (was frontend/.dockerignore) ---------------------------
+# This is a security control, not a build-speed one. The build context is
+# separate from git: an untracked frontend/.env.local would still enter the
+# build stage, and Vite inlines any VITE_-prefixed value into the shipped client
+# bundle. Losing this rule is a silent secret leak, not a build failure.
+# (This also excludes the tracked root .env.example; no Dockerfile copies it.)
+.env*
+**/.env*
+
+# --- Repo directories that must not enter a root context ----------------------
+# .claude holds two *registered git worktrees* under .claude/worktrees/, each a
+# full copy of this repo (~282 MB total today). Without this exclusion the
+# context balloons and both builds slow to a crawl. This is the single most
+# important line in the file for build time.
+.claude
+.superpowers
+.git
+.idea
+.kotlin
