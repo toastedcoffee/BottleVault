@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 FROM gradle:9.6.1-jdk21-alpine AS build
 WORKDIR /app
+# Build context is the repo root: docker build -f backend/Dockerfile .
 COPY backend/build.gradle.kts backend/settings.gradle.kts backend/gradle.properties ./
 COPY backend/gradle ./gradle
 RUN gradle dependencies --no-daemon || true
