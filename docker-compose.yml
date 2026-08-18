@@ -21,8 +21,8 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: bottlevault-api
     environment:
       DATABASE_URL: jdbc:postgresql://postgres:5432/bottlevault
@@ -52,8 +52,8 @@ services:
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         # Self-hosters building from source get 'dev' and a repo-root source
         # link. Set GIT_SHA in .env to pin the AGPL section 13 offer to a commit.
