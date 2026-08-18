@@ -105,6 +105,12 @@ nakedly-escaped quotes there (e.g. `ssh-keygen -N '""'`, `sc create ... binPath=
 a passphrase-protected key) more than once. When in doubt, write the value to
 a temp file or use a here-string instead of inline escaping.
 
+Git Bash also rewrites Unix-looking arguments into Windows paths before handing
+them to a native program (MSYS path conversion). Container paths are the usual
+casualty: `docker run ... cat /usr/share/doc/bottlevault/LICENSE` reaches Docker
+as a `C:\...` path and fails with a confusing "not found". Prefix any command
+carrying an in-container path with `MSYS_NO_PATHCONV=1`.
+
 ## Deployment model (TrueNAS / Dockge)
 
 Prod runs from `docker-compose.prod.yml` pasted into Dockge — there is **no git
@@ -118,6 +124,45 @@ For updating a running instance safely — which changes need a backup, which
 cause downtime, and the backup/restore commands — see [DEPLOY.md](DEPLOY.md).
 A change is backup-required if and only if it adds a file under
 `backend/src/main/resources/db/migration/`.
+
+**Both images build from the repo root**, with an explicit `-f` — not from
+`./backend` or `./frontend`:
+
+```
+docker build -f backend/Dockerfile  ... .
+docker build -f frontend/Dockerfile ... .
+```
+
+The reason is a licence obligation (see Licensing conventions below); do not
+"simplify" the context back to the subdirectories. Three consequences:
+- Every build invocation has to agree: `.github/workflows/ci.yml` (both build
+  steps) and `docker-compose.yml` (**both** services — `backend` *and*
+  `frontend`; changing only one is the easy miss, and the mistake the original
+  plan for this work made).
+- Every host-path `COPY` in both Dockerfiles carries a `backend/` or `frontend/`
+  prefix; one written against the old subdirectory now fails. Easily missed:
+  `COPY frontend/nginx.conf` sits in the *final* stage, below the second `FROM`.
+- The `.dockerignore` that matters is the **root** one. Docker reads only the
+  file at the context root, so a subdirectory one is inert — silently, no
+  warning, no error. `frontend/.dockerignore` is gone and its rules are folded
+  into the root file. Patterns there are relative to the context root, so a bare
+  `node_modules` does *not* match `frontend/node_modules`; names that occur at
+  depth need a `**/` form. Three groups are load-bearing: the
+  `node_modules`/`dist`/`*.tsbuildinfo` group (the host's Windows-native
+  `node_modules` would otherwise overwrite the Alpine install and break
+  `npm run build` in the container), `.env*` (Vite **inlines** any
+  `VITE_`-prefixed value into the shipped client bundle, so losing it is a
+  silent secret leak rather than a build failure), and `.claude` (registered git
+  worktrees, each a full repo copy — 1.6 MB of context with it excluded,
+  hundreds of MB without).
+
+Inspecting what actually landed in a built image: the backend image's
+`ENTRYPOINT ["java", "-jar", "app.jar"]` swallows any command you append, so
+`docker run --rm IMG cat <path>` tells you nothing — use
+`docker run --rm --entrypoint cat IMG <path>`. The nginx-based frontend image
+takes a plain `cat`, but running it standalone needs
+`--add-host backend:127.0.0.1`: `nginx.conf` proxies `/api/` to host `backend`,
+which does not resolve outside compose, and nginx refuses to start without it.
 
 ## Licensing conventions
 
@@ -173,6 +218,16 @@ Dockerfiles have two licensing-adjacent traps:
 The AGPL section 13 source link in the app UI is a **compliance requirement, not
 decoration**. `SourceOffer.tsx` renders on the login page and in the app shell
 footer; it **must stay reachable while logged out**. Do not remove it.
+
+AGPL **sections 4/5** are a *separate* obligation from section 13. Publishing to
+GHCR is conveyance, so everyone who pulls an image must receive the licence text
+with the binary — the `org.opencontainers.image.licenses="AGPL-3.0-only"` label
+asserts the licence but does not ship it. The final stage of each Dockerfile
+therefore carries `COPY LICENSE COPYRIGHT TRADEMARKS.md /usr/share/doc/bottlevault/`.
+Those three files live at the repo root, outside a `./backend` or `./frontend`
+context, which is *why* both builds use a root context (see Deployment model
+above). Dropping either half — the `COPY` or the root context — puts the images
+back out of compliance.
 
 Trademark usage:
 - Use `™` (U+2122) at first prominent use on branding surfaces only — never `®`,
