@@ -98,9 +98,10 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           docker build \
+            -f backend/Dockerfile \
             -t "ghcr.io/toastedcoffee/bottlevault-api:$TAG" \
             -t "ghcr.io/toastedcoffee/bottlevault-api:$SHA" \
-            ./backend
+            .
           docker push "ghcr.io/toastedcoffee/bottlevault-api:$TAG"
           docker push "ghcr.io/toastedcoffee/bottlevault-api:$SHA"
       - name: Build and push frontend image
@@ -108,9 +109,10 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           docker build \
+            -f frontend/Dockerfile \
             --build-arg GIT_SHA="$SHA" \
             -t "ghcr.io/toastedcoffee/bottlevault-web:$TAG" \
             -t "ghcr.io/toastedcoffee/bottlevault-web:$SHA" \
-            ./frontend
+            .
           docker push "ghcr.io/toastedcoffee/bottlevault-web:$TAG"
           docker push "ghcr.io/toastedcoffee/bottlevault-web:$SHA"

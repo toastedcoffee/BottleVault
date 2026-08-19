@@ -1,0 +1,129 @@
+# Docker reads the .dockerignore at the *context root* only. Both images now
+# build from a root context (`docker build -f backend/Dockerfile .`) so the
+# repo-root LICENSE, COPYRIGHT and TRADEMARKS.md are inside the context. That
+# means this is the only .dockerignore Docker reads: the former
+# frontend/.dockerignore stopped applying the moment the context moved, with no
+# warning and no error, so its rules were folded in here. The backend context
+# grew the same way -- from ./backend to the whole repo -- so this file is also
+# what keeps that build from dragging the entire working tree in.
+#
+# This file is expected to track .gitignore's host-artifact entries. The build
+# context is not the git tree: every path .gitignore hides from a reviewer still
+# enters the context unless it is *also* listed here. When you add a `COPY` --
+# or when .gitignore grows an entry -- re-audit this file against .gitignore
+# rather than assuming the two are still in sync. It has drifted before.
+#
+# Pattern scoping: patterns are relative to the context root, so a bare
+# `node_modules` matches only a *top-level* node_modules, NOT
+# frontend/node_modules. Anything that can appear at depth is therefore listed
+# with a `**/` prefix. Docker's `**` is documented to match zero or more path
+# segments, which should make `**/x` cover a top-level `x` as well -- but we do
+# not rely on that assumption: where it matters, both the bare and the `**/`
+# form are listed. A redundant pattern is harmless; a missing one is a silent
+# regression. Patterns match whole path components, so `build` matches a
+# directory named exactly `build` and never the file backend/build.gradle.kts.
+
+# --- Host build output (was frontend/.dockerignore) ---------------------------
+# Must never enter the image build context. The frontend build's `COPY` would
+# otherwise overwrite the Alpine-installed node_modules with Windows-native
+# binaries (notably lightningcss-win32-x64-msvc), breaking `npm run build`
+# inside the container. CI only escapes this because a fresh runner checkout has
+# no node_modules -- on a developer machine it fails every time. Do not delete
+# these lines.
+node_modules
+**/node_modules
+dist
+**/dist
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Backend host build output, same reasoning: backend/build/ and backend/.gradle/
+# exist on the host and are worthless (and large) inside the context.
+# `.gradle` is a distinct path component from the wrapper directory `gradle`,
+# which the backend build still needs, so `gradle/` is deliberately not ignored.
+build
+**/build
+.gradle
+**/.gradle
+# Scoped exactly as .gitignore scopes them: `out` is too generic a name to
+# exclude at any depth without risking a future source directory.
+backend/out
+backend/uploads-dev
+
+# --- Environment files (was frontend/.dockerignore) ---------------------------
+# This is a security control, not a build-speed one. The build context is
+# separate from git: an untracked frontend/.env.local would still enter the
+# build stage, and Vite inlines any VITE_-prefixed value into the shipped client
+# bundle. Losing this rule is a silent secret leak, not a build failure.
+# (This also excludes the tracked root .env.example; no Dockerfile copies it.)
+.env*
+**/.env*
+
+# --- Repo directories that must not enter a root context ----------------------
+# .claude holds two *registered git worktrees* under .claude/worktrees/, each a
+# full copy of this repo (~282 MB total today). Without this exclusion the
+# context balloons and both builds slow to a crawl. This is the single most
+# important line in the file for build time.
+.claude
+.superpowers
+# .git was also inherited from frontend/.dockerignore.
+.git
+
+# Runtime data for the docker-compose bind mounts. docker-compose.prod.yml
+# defaults all three to repo-relative paths -- ./data/postgres, ./data/uploads
+# and ./data/logs/nginx -- so anyone who runs the prod stack from a clone (which
+# DEPLOY.md documents) materialises them right inside the build context. The
+# Postgres directory is root-owned 0700, which makes an unprivileged
+# `docker compose up -d --build` abort with "error checking context: permission
+# denied" before a single Dockerfile instruction runs; a privileged build
+# instead streams the live database and every bottle photo to the daemon.
+# .gitignore already hides these -- this is the build-context half of that.
+# Root-scoped deliberately, for the same reason `out` above gets no `**/` form:
+# all three defaults are repo-root-relative, so a depth form would buy nothing
+# and would silently swallow a future source directory (`frontend/src/data/` is
+# an ordinary React convention), failing the build inside the container while
+# the host build still succeeds.
+data
+
+# Working notes that describe the maintainer's private infrastructure, same
+# class as .superpowers above. Note the scoping: only docs/superpowers/ is
+# excluded, NOT docs/ -- .gitignore scopes it that way deliberately so genuine
+# user-facing docs can live under docs/, and excluding the parent here would
+# silently keep those out of the context too. It exists only at the repo root,
+# so no `**/` form is needed.
+docs/superpowers
+
+# Local-only files that must never reach a public image, mirroring .gitignore.
+CLAUDE.local.md
+**/CLAUDE.local.md
+DEPENDENCY_AUDIT.md
+**/DEPENDENCY_AUDIT.md
+
+# IDE / toolchain state. Unlike the three entries above, these exist at the repo
+# root AND at depth (backend/.idea and backend/.kotlin both exist on this host),
+# so they get the same bare + `**/` pair treatment as the build-output group.
+.idea
+**/.idea
+.kotlin
+**/.kotlin
+.vscode
+**/.vscode
+*.iml
+**/*.iml
+local.properties
+**/local.properties
+.cache
+**/.cache
+
+# Host / OS / cloud-sync droppings. Individually tiny, but they are exactly the
+# kind of thing that reaches an image because nobody thought about them.
+.DS_Store
+**/.DS_Store
+Thumbs.db
+**/Thumbs.db
+*.swp
+**/*.swp
+*.swo
+**/*.swo
+.tmp.driveupload
+**/.tmp.driveupload
