@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # SPDX-FileCopyrightText: 2025-2026 toastedcoffee
-FROM gradle:9.6.1-jdk21-alpine AS build
+FROM gradle:9.7.0-jdk21-alpine AS build
 WORKDIR /app
 # Build context is the repo root: docker build -f backend/Dockerfile .
 COPY backend/build.gradle.kts backend/settings.gradle.kts backend/gradle.properties ./
