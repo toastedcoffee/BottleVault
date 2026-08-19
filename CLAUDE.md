@@ -241,7 +241,13 @@ That second half is satisfied by `org.opencontainers.image.source` on both final
 stages, acting as section 6(d)'s clear directions to the source. **That label is
 load-bearing, not metadata** — deleting it as a redundant-looking OCI label
 breaks the source half of image compliance, exactly as removing `SourceOffer.tsx`
-would break the section 13 half.
+would break the section 13 half. Section 6(d) also requires the Corresponding
+Source stay available "for as long as needed to satisfy these requirements" —
+that label points at a public GitHub repo, so **making this repo private would
+retroactively break compliance for every image already published.** Repo
+visibility is a licence constraint here, not a preference; note that the sibling
+`bottlevault-site` repo was deliberately made private, so this is a plausible
+thing for someone to do by analogy.
 
 Trademark usage:
 - Use `™` (U+2122) at first prominent use on branding surfaces only — never `®`,

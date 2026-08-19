@@ -18,8 +18,11 @@ FROM nginx:alpine
 LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 LABEL org.opencontainers.image.source="https://github.com/toastedcoffee/BottleVault"
 LABEL org.opencontainers.image.title="BottleVault"
-# AGPL sections 4/5: distributing this image is conveyance, so recipients must
-# receive the licence text alongside the binary. Do not remove.
+# AGPL section 6 (object code, conveyed under the terms of sections 4 and 5):
+# publishing this image is conveyance, so recipients must receive the licence
+# text with the binary. Section 6 also requires the Corresponding Source — the
+# org.opencontainers.image.source label above is section 6(d)'s clear directions
+# to it. Both halves are load-bearing: do not remove either.
 COPY LICENSE COPYRIGHT TRADEMARKS.md /usr/share/doc/bottlevault/
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
