@@ -78,8 +78,12 @@ backend/uploads-dev
 # denied" before a single Dockerfile instruction runs; a privileged build
 # instead streams the live database and every bottle photo to the daemon.
 # .gitignore already hides these -- this is the build-context half of that.
+# Root-scoped deliberately, for the same reason `out` above gets no `**/` form:
+# all three defaults are repo-root-relative, so a depth form would buy nothing
+# and would silently swallow a future source directory (`frontend/src/data/` is
+# an ordinary React convention), failing the build inside the container while
+# the host build still succeeds.
 data
-**/data
 
 # Working notes that describe the maintainer's private infrastructure, same
 # class as .superpowers above. Note the scoping: only docs/superpowers/ is
