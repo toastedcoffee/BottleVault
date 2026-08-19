@@ -157,6 +157,9 @@ bottlevault/
 BottleVault is licensed under the **GNU Affero General Public License v3.0**
 (`AGPL-3.0-only`). See [LICENSE](LICENSE) for the full text.
 
+Container images published to GHCR ship the same texts at
+`/usr/share/doc/bottlevault/` — `LICENSE`, `COPYRIGHT` and `TRADEMARKS.md`.
+
 **What this means in practice:**
 
 - You may self-host BottleVault for personal or internal use.

@@ -224,7 +224,7 @@ The AGPL section 13 source link in the app UI is a **compliance requirement, not
 decoration**. `SourceOffer.tsx` renders on the login page and in the app shell
 footer; it **must stay reachable while logged out**. Do not remove it.
 
-AGPL **sections 4/5** are a *separate* obligation from section 13. Publishing to
+AGPL **section 6** conveyance is a *separate* obligation from section 13. Publishing to
 GHCR is conveyance, so everyone who pulls an image must receive the licence text
 with the binary — the `org.opencontainers.image.licenses="AGPL-3.0-only"` label
 asserts the licence but does not ship it. The final stage of each Dockerfile
