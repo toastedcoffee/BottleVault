@@ -234,6 +234,15 @@ context, which is *why* both builds use a root context (see Deployment model
 above). Dropping either half — the `COPY` or the root context — puts the images
 back out of compliance.
 
+Precisely, an image is object code, so the operative section is **6**
+("Conveying Non-Source Forms"), which permits conveying object code *under the
+terms of sections 4 and 5* provided the Corresponding Source is conveyed too.
+That second half is satisfied by `org.opencontainers.image.source` on both final
+stages, acting as section 6(d)'s clear directions to the source. **That label is
+load-bearing, not metadata** — deleting it as a redundant-looking OCI label
+breaks the source half of image compliance, exactly as removing `SourceOffer.tsx`
+would break the section 13 half.
+
 Trademark usage:
 - Use `™` (U+2122) at first prominent use on branding surfaces only — never `®`,
   and never in variable names, package names, database values, or API responses.
