@@ -4,7 +4,7 @@ FROM node:26-alpine AS build
 WORKDIR /app
 # Build context is the repo root: docker build -f frontend/Dockerfile .
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci || npm install
+RUN npm ci
 COPY frontend/ ./
 # AGPL section 13: bake the running commit into the bundle so the in-app source
 # link points at the exact tree this image was built from. Declared here rather
