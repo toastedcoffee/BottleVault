@@ -57,10 +57,11 @@ services:
       args:
         # Self-hosters building from source get 'dev' and a repo-root source
         # link. Set GIT_SHA in .env to pin the AGPL section 13 offer to a
-        # commit, but only from a clean tree. A dirty tree still yields a SHA
+        # commit, but only from a clean tree. A dirty tree, or one with
+        # untracked files that enter the build context, still yields a SHA
         # that resolves on GitHub; it just won't describe what's actually
-        # running. Verify first with `git diff --quiet && git diff --cached
-        # --quiet` (exits 0 only when clean), then set
+        # running. Verify first with `test -z "$(git status --porcelain)"`
+        # (empty output only when clean, tracked and untracked), then set
         # GIT_SHA=$(git rev-parse HEAD).
         GIT_SHA: ${GIT_SHA:-dev}
     container_name: bottlevault-web
