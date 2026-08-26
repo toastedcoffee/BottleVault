@@ -123,6 +123,30 @@ describe('SourceOffer', () => {
       expect(screen.getByRole('link', { name: 'Source' })).toHaveAttribute('href', REPO);
     });
 
+    it('drops a query string so it cannot swallow the commit path', () => {
+      vi.stubEnv('VITE_SOURCE_URL', 'https://git.example.com/someone/bottlevault?tab=readme');
+      vi.stubEnv('VITE_GIT_SHA', '1234567890abcdef');
+
+      render(<SourceOffer />);
+
+      expect(screen.getByRole('link', { name: 'Source' })).toHaveAttribute(
+        'href',
+        'https://git.example.com/someone/bottlevault/tree/1234567890abcdef',
+      );
+    });
+
+    it('drops a fragment, which would otherwise silently discard the commit pin', () => {
+      vi.stubEnv('VITE_SOURCE_URL', 'https://git.example.com/someone/bottlevault#readme');
+      vi.stubEnv('VITE_GIT_SHA', '1234567890abcdef');
+
+      render(<SourceOffer />);
+
+      expect(screen.getByRole('link', { name: 'Source' })).toHaveAttribute(
+        'href',
+        'https://git.example.com/someone/bottlevault/tree/1234567890abcdef',
+      );
+    });
+
     it('falls back to upstream when the override is not an http(s) URL', () => {
       vi.stubEnv('VITE_SOURCE_URL', 'javascript:alert(1)');
 

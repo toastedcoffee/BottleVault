@@ -12,16 +12,22 @@ const UPSTREAM_URL = 'https://github.com/toastedcoffee/BottleVault';
  * Anything unparseable, or any scheme other than http(s), falls back to
  * upstream. A silently broken link is the failure mode this whole mechanism
  * exists to prevent, so a bad value must not render as-is.
+ *
+ * Rebuilt from origin + pathname rather than returned verbatim, because
+ * `/tree/<sha>` is appended to whatever comes back. A pasted URL carrying a
+ * query or fragment would otherwise absorb that suffix — `...repo#readme`
+ * becomes `...repo#readme/tree/<sha>`, which the browser resolves to the
+ * default branch while silently discarding the commit pin.
  */
 function resolveSourceUrl(raw: string | undefined): string {
-  const candidate = (raw ?? '').trim().replace(/\/+$/, '');
+  const candidate = (raw ?? '').trim();
   if (!candidate) return UPSTREAM_URL;
 
   try {
-    const { protocol } = new URL(candidate);
+    const parsed = new URL(candidate);
     // `new URL` accepts javascript: and data: without throwing.
-    if (protocol !== 'http:' && protocol !== 'https:') return UPSTREAM_URL;
-    return candidate;
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return UPSTREAM_URL;
+    return `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, '');
   } catch {
     return UPSTREAM_URL;
   }
