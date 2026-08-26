@@ -12,7 +12,13 @@ backend/uploads-dev/
 backend/local.properties
 
 # Frontend
-frontend/node_modules/
+# Unanchored: a .gitignore pattern with no mid-string slash matches at ANY
+# depth, so this one rule covers frontend/node_modules/ and a stray repo-root
+# node_modules/ (left behind by an npm/npx run from the wrong directory).
+# Deliberately NOT mirroring the root .dockerignore, which needs both
+# `node_modules` and `**/node_modules`: dockerignore anchors every pattern at
+# the context root, git does not.
+node_modules/
 frontend/dist/
 frontend/.cache/
 *.tsbuildinfo
