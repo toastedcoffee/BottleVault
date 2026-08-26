@@ -215,10 +215,17 @@ Dockerfiles have two licensing-adjacent traps:
   so a directive added below it is silently ignored — if one is ever needed, it
   goes *above* the SPDX header.
 - The frontend build injects the commit SHA via the Docker build arg `GIT_SHA`
-  into `VITE_GIT_SHA`. Keep `ARG GIT_SHA` **inside the build stage that consumes
-  it** (the `FROM ... AS build` stage, above the build `RUN`). An `ARG` declared
+  into `VITE_GIT_SHA`, and the source-offer repository via `SOURCE_URL` into
+  `VITE_SOURCE_URL`. Keep **both** `ARG`s **inside the build stage that consumes
+  them** (the `FROM ... AS build` stage, above the build `RUN`). An `ARG` declared
   outside that stage is invisible to it, and the frontend silently ships the
   `dev` sentinel instead of the real commit SHA — with no error.
+  The two are a **pair for modifiers**: `SOURCE_URL` alone yields a repo-root
+  link, but `GIT_SHA` alone pins the modifier's commit against *upstream's*
+  repository, which 404s. `SourceOffer.tsx` falls back to upstream for any
+  `SOURCE_URL` that is empty, unparseable, or not `http(s):` — a bad value must
+  never render as-is, since a silently broken link is the exact failure this
+  mechanism exists to prevent.
 
 The AGPL section 13 source link in the app UI is a **compliance requirement, not
 decoration**. `SourceOffer.tsx` renders on the login page and in the app shell

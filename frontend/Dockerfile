@@ -12,6 +12,13 @@ COPY frontend/ ./
 # cache. Defaults to 'dev' so a build without the arg still succeeds.
 ARG GIT_SHA=dev
 ENV VITE_GIT_SHA=$GIT_SHA
+# Where that link points. Defaults to upstream, which is correct for anyone
+# running this code unmodified. A self-hoster who MODIFIES the code must set
+# both this and GIT_SHA to their own repository and commit — section 13 obliges
+# them to offer *their* users *their* source, and GIT_SHA alone would pin their
+# commit against the upstream repo, which 404s.
+ARG SOURCE_URL=https://github.com/toastedcoffee/BottleVault
+ENV VITE_SOURCE_URL=$SOURCE_URL
 RUN npm run build
 
 FROM nginx:alpine

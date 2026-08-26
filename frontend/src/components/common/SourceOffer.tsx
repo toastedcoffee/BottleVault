@@ -1,7 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 
-const REPO_URL = 'https://github.com/toastedcoffee/BottleVault';
+const UPSTREAM_URL = 'https://github.com/toastedcoffee/BottleVault';
+
+/**
+ * Resolve where the source offer should point. Defaults to upstream; a
+ * self-hoster who *modifies* the code sets VITE_SOURCE_URL (Docker build arg
+ * SOURCE_URL) to their own repository so the link discharges *their* section 13
+ * duty rather than pointing at code they are not running.
+ *
+ * Anything unparseable, or any scheme other than http(s), falls back to
+ * upstream. A silently broken link is the failure mode this whole mechanism
+ * exists to prevent, so a bad value must not render as-is.
+ */
+function resolveSourceUrl(raw: string | undefined): string {
+  const candidate = (raw ?? '').trim().replace(/\/+$/, '');
+  if (!candidate) return UPSTREAM_URL;
+
+  try {
+    const { protocol } = new URL(candidate);
+    // `new URL` accepts javascript: and data: without throwing.
+    if (protocol !== 'http:' && protocol !== 'https:') return UPSTREAM_URL;
+    return candidate;
+  } catch {
+    return UPSTREAM_URL;
+  }
+}
 
 /**
  * AGPL section 13 compliance: users interacting with this app over a
@@ -15,17 +39,23 @@ const REPO_URL = 'https://github.com/toastedcoffee/BottleVault';
  * so it represents the deployment; a self-hoster running mismatched image tags
  * could see a value that does not describe their backend.
  *
+ * The repository is likewise build-time configurable (SOURCE_URL ->
+ * VITE_SOURCE_URL), defaulting to upstream. A self-hoster who modifies the code
+ * must set *both*: SOURCE_URL alone yields their repo root, but GIT_SHA alone
+ * pins their commit against the upstream repository, which 404s.
+ *
  * This link is a licence obligation. Do not remove it.
  */
 export default function SourceOffer() {
   const sha = (import.meta.env.VITE_GIT_SHA ?? '').trim() || 'dev';
   const isPinned = sha !== 'dev';
+  const repoUrl = resolveSourceUrl(import.meta.env.VITE_SOURCE_URL);
 
   return (
     <p className="text-xs text-text-low text-center">
       BottleVault — AGPL-3.0-only —{' '}
       <a
-        href={isPinned ? `${REPO_URL}/tree/${sha}` : REPO_URL}
+        href={isPinned ? `${repoUrl}/tree/${sha}` : repoUrl}
         target="_blank"
         rel="noopener noreferrer"
         className="underline hover:text-text-mid"

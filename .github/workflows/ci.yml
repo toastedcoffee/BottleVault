@@ -107,10 +107,15 @@ jobs:
       - name: Build and push frontend image
         env:
           SHA: ${{ github.sha }}
+          # Self-referencing, so a fork's CI bakes in the fork's own URL and its
+          # images satisfy the fork's own AGPL section 13 duty. Crossed into the
+          # shell via env: like SHA above — never interpolated into the run body.
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           docker build \
             -f frontend/Dockerfile \
             --build-arg GIT_SHA="$SHA" \
+            --build-arg SOURCE_URL="$REPO_URL" \
             -t "ghcr.io/toastedcoffee/bottlevault-web:$TAG" \
             -t "ghcr.io/toastedcoffee/bottlevault-web:$SHA" \
             .

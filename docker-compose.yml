@@ -64,6 +64,12 @@ services:
         # (empty output only when clean, tracked and untracked), then set
         # GIT_SHA=$(git rev-parse HEAD).
         GIT_SHA: ${GIT_SHA:-dev}
+        # Repository that source link points at. Leave unset if you run this
+        # code unmodified. If you MODIFY it, set SOURCE_URL to your own
+        # repository *and* set GIT_SHA above — AGPL section 13 obliges you to
+        # offer your users your source, and GIT_SHA alone would pin your commit
+        # against the upstream repo, which 404s.
+        SOURCE_URL: ${SOURCE_URL:-https://github.com/toastedcoffee/BottleVault}
     container_name: bottlevault-web
     ports:
       - "${PORT:-80}:80"

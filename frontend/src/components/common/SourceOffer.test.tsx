@@ -70,4 +70,65 @@ describe('SourceOffer', () => {
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
+
+  describe('when a self-hoster overrides the source URL', () => {
+    it('points at their repository instead of upstream', () => {
+      vi.stubEnv('VITE_SOURCE_URL', 'https://git.example.com/someone/bottlevault');
+
+      render(<SourceOffer />);
+
+      expect(screen.getByRole('link', { name: 'Source' })).toHaveAttribute(
+        'href',
+        'https://git.example.com/someone/bottlevault',
+      );
+    });
+
+    it('pins to a commit in their repository, not upstream', () => {
+      vi.stubEnv('VITE_SOURCE_URL', 'https://git.example.com/someone/bottlevault');
+      vi.stubEnv('VITE_GIT_SHA', '1234567890abcdef');
+
+      render(<SourceOffer />);
+
+      expect(screen.getByRole('link', { name: 'Source' })).toHaveAttribute(
+        'href',
+        'https://git.example.com/someone/bottlevault/tree/1234567890abcdef',
+      );
+    });
+
+    it('strips a trailing slash so the commit path stays well-formed', () => {
+      vi.stubEnv('VITE_SOURCE_URL', 'https://git.example.com/someone/bottlevault/');
+      vi.stubEnv('VITE_GIT_SHA', '1234567890abcdef');
+
+      render(<SourceOffer />);
+
+      expect(screen.getByRole('link', { name: 'Source' })).toHaveAttribute(
+        'href',
+        'https://git.example.com/someone/bottlevault/tree/1234567890abcdef',
+      );
+    });
+
+    it('falls back to upstream when the override is whitespace-only', () => {
+      vi.stubEnv('VITE_SOURCE_URL', '   ');
+
+      render(<SourceOffer />);
+
+      expect(screen.getByRole('link', { name: 'Source' })).toHaveAttribute('href', REPO);
+    });
+
+    it('falls back to upstream when the override is not a valid URL', () => {
+      vi.stubEnv('VITE_SOURCE_URL', 'not a url');
+
+      render(<SourceOffer />);
+
+      expect(screen.getByRole('link', { name: 'Source' })).toHaveAttribute('href', REPO);
+    });
+
+    it('falls back to upstream when the override is not an http(s) URL', () => {
+      vi.stubEnv('VITE_SOURCE_URL', 'javascript:alert(1)');
+
+      render(<SourceOffer />);
+
+      expect(screen.getByRole('link', { name: 'Source' })).toHaveAttribute('href', REPO);
+    });
+  });
 });
