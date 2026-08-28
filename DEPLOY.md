@@ -346,28 +346,51 @@ rename to `display_name` — and merge or rename anything they return.
 Normalization must match `NameNormalizer.normalize` in the Kotlin codebase:
 trim, fold diacritics, strip anything that isn't a letter/digit/space,
 collapse whitespace, lowercase. This check can only ever *approximate* that
-in SQL, and the two will never match exactly — Postgres's `\s` / `[:space:]`
+in SQL, and the two will never match exactly. That mismatch is tolerable in
+only one direction: this check must be **strictly coarser** than
+`NameNormalizer`, so it over-reports rather than under-reports. A false
+positive just costs a few minutes checking a pair that turns out fine; a
+false clean means the migration itself discovers the problem partway
+through, with the API down.
+
+For whitespace, the query below achieves that. Postgres's `\s` / `[:space:]`
 does not agree with the normalizer's own notion of whitespace, which
 explicitly folds U+00A0 (non-breaking space) and U+200B (zero-width space) as
-a deliberate, documented feature, not just ordinary spaces and tabs. That
-mismatch is tolerable in only one direction: this check must be **strictly
-coarser** than `NameNormalizer`, so it over-reports rather than under-reports.
-A false positive just costs a few minutes checking a pair that turns out
-fine; a false clean means the migration itself discovers the problem
-partway through, with the API down. So rather than try to enumerate every
-character Postgres and the normalizer might disagree on being "whitespace,"
-this check strips every character that isn't a letter or digit outright
-(instead of collapsing whitespace to a single space) — that one change
-subsumes ordinary spaces, non-breaking spaces, zero-width spaces, tabs, and
-doubled spaces alike, since none of them survive to be compared. Any future
-edit to these queries must preserve that property: coarser than the
-normalizer, never more precise. This check runs against production
-PostgreSQL only, never H2, so the Postgres-only `translate()` below is fine
-here — unlike the migrations themselves. It's used instead of the `unaccent`
-extension since `unaccent` may not be installed, and it covers the accented
-Latin-1 vowels and consonants that actually turn up in this catalogue (real
-cases: `Patrón`, `Rémy Martin`) — extend the character list if a future
-brand needs more.
+a deliberate, documented feature, not just ordinary spaces and tabs. So
+rather than try to enumerate every character Postgres and the normalizer
+might disagree on being "whitespace," this check strips every character that
+isn't a letter or digit outright (instead of collapsing whitespace to a
+single space) — that one change subsumes ordinary spaces, non-breaking
+spaces, zero-width spaces, tabs, and doubled spaces alike, since none of them
+survive to be compared.
+
+For diacritics, it does **not** achieve that, and this is a real gap rather
+than a theoretical one. Below, `translate()` only *folds* the ~50 accented
+Latin-1 characters it explicitly lists (real cases in this catalogue:
+`Patrón` -> `patron`, `Rémy Martin` -> `remy martin`) — it runs instead of the
+`unaccent` extension since `unaccent` may not be installed. Any character
+outside that list is not folded at all; it is *deleted* by the
+`regexp_replace(..., '[^a-zA-Z0-9]', '', 'g')` that follows, because by that
+point it is still not a plain ASCII letter. Deletion and folding are
+different mappings, so two rows that `NameNormalizer` (which folds *every*
+Unicode diacritic via NFD, not just the Latin-1 ones) considers a collision
+can land in different buckets here and be reported clean. Concrete case:
+brands `Jūnmai` and `Junmai` both normalize to `junmai` in Kotlin, so V9
+rejects the pair — but this query turns `Jūnmai` into `jnmai` (the `ū` is
+deleted, not folded to `u`) versus `junmai` for the plain spelling: different
+values, zero rows, reported clean. `İzmir`/`Izmir` and `Bāng`/`Bang` fail the
+same way. This is reachable today, not hypothetical: `SAKE` is a supported
+`AlcoholType` and the catalogue already contains a sake brewery. Both queries
+run against production PostgreSQL only, never H2, so the Postgres-only
+`translate()` is fine here — unlike the migrations themselves.
+
+**Do not "fix" this by extending the `translate()` character list.** That
+only moves the boundary to wherever the list still doesn't reach — the next
+unlisted accented character is exactly as invisible to the query as `ū` is
+today. Instead, run the third query further below against both tables and
+hand-check every row it returns: those are exactly the rows carrying a
+character the first two queries cannot fold correctly, so they are the only
+place the "strictly coarser" property above can silently fail.
 
 Brands:
 
@@ -385,7 +408,22 @@ duplicate brand:
 docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT brand_id, lower(regexp_replace(translate(trim(name), 'áàâäãåéèêëíìîïóòôöõúùûüñçÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÑÇ', 'aaaaaaeeeeiiiiooooouuuuncAAAAAAEEEEIIIIOOOOOUUUUNC'), '[^a-zA-Z0-9]', '', 'g')) AS normalized, count(*) AS variants, string_agg(name, ' | ') AS spellings FROM products GROUP BY 1, 2 HAVING count(*) > 1;"
 ```
 
-Zero rows from both means V7 to V9 will apply cleanly. If you skip this and
+Companion check — every row whose name contains a character outside the
+printable ASCII range, in either table. These are the rows the two checks
+above cannot be trusted on: any of them might fold to a collision under
+`NameNormalizer` that the `translate()`-based checks miss entirely, as with
+`Jūnmai`/`Junmai` above. Nothing here is a pass/fail signal by itself — treat
+every returned row as a prompt to manually work out what `NameNormalizer.normalize`
+would produce for it (or just check the app's own brand/product search once
+the name is in) and compare against the rest of the catalogue in the same
+scope (all brands; products within the same `brand_id`):
+
+```bash
+docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT 'brand' AS table_name, id::text, name FROM brands WHERE name ~ '[^\x20-\x7E]' UNION ALL SELECT 'product', id::text || ' (brand ' || brand_id || ')', name FROM products WHERE name ~ '[^\x20-\x7E]' ORDER BY 1, 3;"
+```
+
+Zero rows from the first two, and a clean hand-check of anything the third
+returns, means V7 to V9 will apply cleanly. If you skip this and
 two brands differ only by whitespace or diacritics, V8 fails while rewriting
 `display_name` in place — against the **old** `brands_name_key` constraint
 inherited from V1, not the new `uq_brands_normalized_name` V9 adds. Don't be
@@ -418,6 +456,40 @@ docker run --rm --entrypoint sh <image> -c 'unzip -l app.jar | grep V8__'
 
 or watch the container log during the update for Flyway's line:
 `Migrating schema "public" to version "8"`.
+
+---
+
+## 7b. Populating brand aliases (manual)
+
+`brands.aliases` and `brands.normalized_aliases` exist so a search for one
+term can surface a brand that term never actually appears on — the
+motivating case is searching "Suntory" and getting `Hibiki`, even though the
+word "Suntory" appears in none of Hibiki's own name fields or its products'.
+There is no API field for this: populating aliases through the app is
+deliberately out of scope for this phase (a maintainer script for it is
+planned for later), so the only route today is a manual SQL update run
+directly against the row.
+
+Both columns must be set together. `aliases` is the human-readable list;
+`normalized_aliases` is what brand search actually matches against (the same
+`LIKE`-based query that reads `normalized_name` also reads this column), so
+setting `aliases` alone silently yields no search benefit and raises no
+error. The value in `normalized_aliases` must match what
+`NameNormalizer.normalize` would produce for that word, not whatever casing
+or spacing you typed into `aliases`: lowercase, no punctuation, single
+spaces.
+
+Worked example — adding "Suntory" as an alias of the brand `Hibiki`:
+
+```bash
+docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "UPDATE brands SET aliases = 'Suntory', normalized_aliases = 'suntory' WHERE normalized_name = 'hibiki';"
+```
+
+Confirm it landed on the row you meant:
+
+```bash
+docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT display_name, aliases, normalized_aliases FROM brands WHERE normalized_name = 'hibiki';"
+```
 
 ---
 
