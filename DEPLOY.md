@@ -345,7 +345,23 @@ rename to `display_name` — and merge or rename anything they return.
 
 Normalization must match `NameNormalizer.normalize` in the Kotlin codebase:
 trim, fold diacritics, strip anything that isn't a letter/digit/space,
-collapse whitespace, lowercase. This check runs against production
+collapse whitespace, lowercase. This check can only ever *approximate* that
+in SQL, and the two will never match exactly — Postgres's `\s` / `[:space:]`
+does not agree with the normalizer's own notion of whitespace, which
+explicitly folds U+00A0 (non-breaking space) and U+200B (zero-width space) as
+a deliberate, documented feature, not just ordinary spaces and tabs. That
+mismatch is tolerable in only one direction: this check must be **strictly
+coarser** than `NameNormalizer`, so it over-reports rather than under-reports.
+A false positive just costs a few minutes checking a pair that turns out
+fine; a false clean means the migration itself discovers the problem
+partway through, with the API down. So rather than try to enumerate every
+character Postgres and the normalizer might disagree on being "whitespace,"
+this check strips every character that isn't a letter or digit outright
+(instead of collapsing whitespace to a single space) — that one change
+subsumes ordinary spaces, non-breaking spaces, zero-width spaces, tabs, and
+doubled spaces alike, since none of them survive to be compared. Any future
+edit to these queries must preserve that property: coarser than the
+normalizer, never more precise. This check runs against production
 PostgreSQL only, never H2, so the Postgres-only `translate()` below is fine
 here — unlike the migrations themselves. It's used instead of the `unaccent`
 extension since `unaccent` may not be installed, and it covers the accented
@@ -356,7 +372,7 @@ brand needs more.
 Brands:
 
 ```bash
-docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT lower(regexp_replace(regexp_replace(translate(trim(name), 'áàâäãåéèêëíìîïóòôöõúùûüñçÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÑÇ', 'aaaaaaeeeeiiiiooooouuuuncAAAAAAEEEEIIIIOOOOOUUUUNC'), '[^[:alnum:][:space:]]', '', 'g'), '\s+', ' ', 'g')) AS normalized, count(*) AS variants, string_agg(name, ' | ') AS spellings FROM brands GROUP BY 1 HAVING count(*) > 1;"
+docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT lower(regexp_replace(translate(trim(name), 'áàâäãåéèêëíìîïóòôöõúùûüñçÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÑÇ', 'aaaaaaeeeeiiiiooooouuuuncAAAAAAEEEEIIIIOOOOOUUUUNC'), '[^a-zA-Z0-9]', '', 'g')) AS normalized, count(*) AS variants, string_agg(name, ' | ') AS spellings FROM brands GROUP BY 1 HAVING count(*) > 1;"
 ```
 
 Products — grouped per `brand_id`, since the V9 constraint is scoped to a
@@ -366,7 +382,7 @@ brands. Check this one too: V1 never put a uniqueness constraint on
 duplicate brand:
 
 ```bash
-docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT brand_id, lower(regexp_replace(regexp_replace(translate(trim(name), 'áàâäãåéèêëíìîïóòôöõúùûüñçÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÑÇ', 'aaaaaaeeeeiiiiooooouuuuncAAAAAAEEEEIIIIOOOOOUUUUNC'), '[^[:alnum:][:space:]]', '', 'g'), '\s+', ' ', 'g')) AS normalized, count(*) AS variants, string_agg(name, ' | ') AS spellings FROM products GROUP BY 1, 2 HAVING count(*) > 1;"
+docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT brand_id, lower(regexp_replace(translate(trim(name), 'áàâäãåéèêëíìîïóòôöõúùûüñçÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÑÇ', 'aaaaaaeeeeiiiiooooouuuuncAAAAAAEEEEIIIIOOOOOUUUUNC'), '[^a-zA-Z0-9]', '', 'g')) AS normalized, count(*) AS variants, string_agg(name, ' | ') AS spellings FROM products GROUP BY 1, 2 HAVING count(*) > 1;"
 ```
 
 Zero rows from both means V7 to V9 will apply cleanly. If you skip this and
@@ -375,6 +391,16 @@ two brands differ only by whitespace or diacritics, V8 fails while rewriting
 inherited from V1, not the new `uq_brands_normalized_name` V9 adds. Don't be
 misled by the constraint name in the error: it's the same class of problem
 as above, and the same fix (normalize, merge or rename, re-run).
+
+Because this check is deliberately coarser than `NameNormalizer`, it can also
+flag pairs that would not actually collide — for example `Brewery & Kitchen`
+versus `BreweryKitchen`. The real normalizer keeps those distinct: it strips
+the `&` but preserves the space around it, so one normalizes with a
+word-separating space and the other without. This check strips both the `&`
+and every space, so the two collapse to the same value here even though V9
+would accept them both. Investigate anything this reports — don't assume a
+report is a false alarm without checking — but expect the occasional one; a
+little extra investigation is the price of never seeing a false "clean."
 
 This is a **Class B**, backup-required update: it renames columns and takes
 2 to 5 minutes of downtime.
