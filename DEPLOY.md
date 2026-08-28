@@ -336,17 +336,62 @@ migration has since run — restore the matching data snapshot too.
 
 ## 7a. Pre-check before the name normalization migration (V7 to V9)
 
-V9 adds a `UNIQUE` constraint on a normalized form of every brand and product
-name. If two rows differ only by case, whitespace, punctuation or diacritics,
-the migration fails and the API will not start. Run this **before** updating,
-and merge anything it returns:
+V9 adds a `UNIQUE` constraint on a normalized form of every brand name, and a
+`UNIQUE(brand_id, normalized_name)` constraint on product names within a
+brand. If two rows normalize to the same value, the migration fails partway
+through and the API will not start. Run both checks below **before**
+updating — against the `name` column, since this runs pre-V7, before the
+rename to `display_name` — and merge or rename anything they return.
+
+Normalization must match `NameNormalizer.normalize` in the Kotlin codebase:
+trim, fold diacritics, strip anything that isn't a letter/digit/space,
+collapse whitespace, lowercase. This check runs against production
+PostgreSQL only, never H2, so the Postgres-only `translate()` below is fine
+here — unlike the migrations themselves. It's used instead of the `unaccent`
+extension since `unaccent` may not be installed, and it covers the accented
+Latin-1 vowels and consonants that actually turn up in this catalogue (real
+cases: `Patrón`, `Rémy Martin`) — extend the character list if a future
+brand needs more.
+
+Brands:
 
 ```bash
-docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT lower(regexp_replace(regexp_replace(trim(display_name), '[^[:alnum:][:space:]]', '', 'g'), '\s+', ' ', 'g')) AS normalized, count(*) AS variants, string_agg(display_name, ' | ') AS spellings FROM brands GROUP BY 1 HAVING count(*) > 1;"
+docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT lower(regexp_replace(regexp_replace(translate(trim(name), 'áàâäãåéèêëíìîïóòôöõúùûüñçÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÑÇ', 'aaaaaaeeeeiiiiooooouuuuncAAAAAAEEEEIIIIOOOOOUUUUNC'), '[^[:alnum:][:space:]]', '', 'g'), '\s+', ' ', 'g')) AS normalized, count(*) AS variants, string_agg(name, ' | ') AS spellings FROM brands GROUP BY 1 HAVING count(*) > 1;"
 ```
 
-Zero rows means the migration will apply cleanly. This is a **Class B**,
-backup-required update: it renames columns and takes 2 to 5 minutes of downtime.
+Products — grouped per `brand_id`, since the V9 constraint is scoped to a
+brand and the same product name is allowed to repeat across different
+brands. Check this one too: V1 never put a uniqueness constraint on
+`products.name`, so a duplicate here is considerably more likely than a
+duplicate brand:
+
+```bash
+docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT brand_id, lower(regexp_replace(regexp_replace(translate(trim(name), 'áàâäãåéèêëíìîïóòôöõúùûüñçÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÑÇ', 'aaaaaaeeeeiiiiooooouuuuncAAAAAAEEEEIIIIOOOOOUUUUNC'), '[^[:alnum:][:space:]]', '', 'g'), '\s+', ' ', 'g')) AS normalized, count(*) AS variants, string_agg(name, ' | ') AS spellings FROM products GROUP BY 1, 2 HAVING count(*) > 1;"
+```
+
+Zero rows from both means V7 to V9 will apply cleanly. If you skip this and
+two brands differ only by whitespace or diacritics, V8 fails while rewriting
+`display_name` in place — against the **old** `brands_name_key` constraint
+inherited from V1, not the new `uq_brands_normalized_name` V9 adds. Don't be
+misled by the constraint name in the error: it's the same class of problem
+as above, and the same fix (normalize, merge or rename, re-run).
+
+This is a **Class B**, backup-required update: it renames columns and takes
+2 to 5 minutes of downtime.
+
+**Also verify the V8 migration class actually shipped in the image.** V8 is
+a Kotlin `BaseJavaMigration` (package `db.migration`), found on the classpath
+at startup. The test suite only proves this works from exploded classes, not
+from inside the Spring Boot fat jar — if it were silently missing there, V8
+would be skipped and V9's `SET NOT NULL` would abort on NULL rows. Loud, but
+only at deploy time, so confirm first. Either check the jar directly:
+
+```bash
+docker run --rm --entrypoint sh <image> -c 'unzip -l app.jar | grep V8__'
+```
+
+or watch the container log during the update for Flyway's line:
+`Migrating schema "public" to version "8"`.
 
 ---
 
