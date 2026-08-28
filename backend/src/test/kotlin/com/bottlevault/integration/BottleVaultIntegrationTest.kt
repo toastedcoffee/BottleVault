@@ -110,7 +110,7 @@ class BottleVaultIntegrationTest : AbstractPostgresIntegrationTest() {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.id").value(bottle.id))
-            .andExpect(jsonPath("$.product.name").value("Old No. 7 Tennessee Whiskey"))
+            .andExpect(jsonPath("$.product.displayName").value("Old No. 7 Tennessee Whiskey"))
     }
 
     @Test

@@ -11,7 +11,7 @@ import java.math.BigDecimal
 
 data class ProductResponse(
     val id: String,
-    val name: String,
+    val displayName: String,
     val barcode: String?,
     val type: AlcoholType,
     val subtype: String?,
@@ -25,7 +25,7 @@ data class ProductResponse(
     companion object {
         fun from(product: Product) = ProductResponse(
             id = product.id.toString(),
-            name = product.displayName,
+            displayName = product.displayName,
             barcode = product.barcode,
             type = product.type,
             subtype = product.subtype,

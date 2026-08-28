@@ -251,7 +251,7 @@ export default function AddBottlePage() {
                 >
                   <option value="">Select a brand...</option>
                   {brands?.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
+                    <option key={b.id} value={b.id}>{b.displayName}</option>
                   ))}
                 </select>
               </div>
@@ -267,7 +267,7 @@ export default function AddBottlePage() {
                     <option value="">Select a product...</option>
                     {products?.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name} {p.size ? `(${p.size})` : ''}
+                        {p.displayName} {p.size ? `(${p.size})` : ''}
                       </option>
                     ))}
                   </select>
@@ -296,7 +296,7 @@ export default function AddBottlePage() {
                   >
                     <option value="">Select a brand...</option>
                     {brands?.map((b) => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
+                      <option key={b.id} value={b.id}>{b.displayName}</option>
                     ))}
                   </select>
                   <button

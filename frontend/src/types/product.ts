@@ -11,7 +11,7 @@ export type AlcoholType =
 
 export interface ProductResponse {
   id: string;
-  name: string;
+  displayName: string;
   barcode: string | null;
   type: AlcoholType;
   subtype: string | null;

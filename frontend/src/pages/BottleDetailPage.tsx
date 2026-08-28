@@ -38,17 +38,17 @@ export default function BottleDetailPage() {
             bottleId={bottle.id}
             hasImage
             className="w-full max-h-96 object-contain bg-bg"
-            alt={product.name}
+            alt={product.displayName}
           />
         )}
         <div className="p-6">
           <div className="flex justify-between items-start">
             <div>
               <p className="text-sm font-medium text-primary-bright uppercase tracking-wide">
-                {product.brand.name}
+                {product.brand.displayName}
                 {product.brand.country && ` - ${product.brand.country}`}
               </p>
-              <h1 className="font-display text-2xl font-bold text-text-hi mt-1">{product.name}</h1>
+              <h1 className="font-display text-2xl font-bold text-text-hi mt-1">{product.displayName}</h1>
               <div className="flex items-center gap-3 mt-2">
                 <StatusBadge status={bottle.status} />
                 <span className="text-sm text-text-mid">

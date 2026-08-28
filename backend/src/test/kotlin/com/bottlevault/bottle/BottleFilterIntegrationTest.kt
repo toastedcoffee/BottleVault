@@ -67,7 +67,7 @@ class BottleFilterIntegrationTest : AbstractPostgresIntegrationTest() {
     fun `status filter returns only matching bottles`() {
         listBottles("status" to "UNOPENED")
             .andExpect(jsonPath("$.totalElements").value(1))
-            .andExpect(jsonPath("$.content[0].product.name").value("Old No. 7 Tennessee Whiskey"))
+            .andExpect(jsonPath("$.content[0].product.displayName").value("Old No. 7 Tennessee Whiskey"))
     }
 
     @Test
@@ -138,7 +138,7 @@ class BottleFilterIntegrationTest : AbstractPostgresIntegrationTest() {
     fun `all three filters combine`() {
         listBottles("search" to "Old No. 7", "status" to "UNOPENED", "type" to "WHISKEY")
             .andExpect(jsonPath("$.totalElements").value(1))
-            .andExpect(jsonPath("$.content[0].product.name").value("Old No. 7 Tennessee Whiskey"))
+            .andExpect(jsonPath("$.content[0].product.displayName").value("Old No. 7 Tennessee Whiskey"))
     }
 
     @Test

@@ -25,20 +25,20 @@ class BrandCreationIntegrationTest : AbstractPostgresIntegrationTest() {
 
         val response = brandService.createBrand(BrandCreateRequest(name = "JAMESON"))
 
-        assertEquals("Jameson", response.name)
+        assertEquals("Jameson", response.displayName)
         assertEquals(before, brandRepository.count(), "no new row should have been created")
     }
 
     @Test
     fun `submitting a punctuation variant returns the existing brand`() {
         val response = brandService.createBrand(BrandCreateRequest(name = "jack daniels"))
-        assertEquals("Jack Daniel's", response.name)
+        assertEquals("Jack Daniel's", response.displayName)
     }
 
     @Test
     fun `a genuinely new brand is created with its submitted casing preserved`() {
         val response = brandService.createBrand(BrandCreateRequest(name = "BenRiach"))
-        assertEquals("BenRiach", response.name)
+        assertEquals("BenRiach", response.displayName)
 
         val stored = brandRepository.findByNormalizedName("benriach")
         assertEquals("BenRiach", stored!!.displayName)
@@ -47,7 +47,7 @@ class BrandCreationIntegrationTest : AbstractPostgresIntegrationTest() {
     @Test
     fun `a new brand has surrounding whitespace stripped from its display name`() {
         val response = brandService.createBrand(BrandCreateRequest(name = "  Kirkland  Signature  "))
-        assertEquals("Kirkland Signature", response.name)
+        assertEquals("Kirkland Signature", response.displayName)
     }
 
     @Test
