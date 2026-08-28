@@ -26,11 +26,11 @@ class BrandService(private val brandRepository: BrandRepository) {
     }
 
     fun searchBrands(query: String): List<BrandResponse> =
-        brandRepository.searchByDisplayName(query).map { BrandResponse.from(it) }
+        brandRepository.searchByNormalized(NameNormalizer.normalize(query)).map { BrandResponse.from(it) }
 
     @Transactional
     fun createBrand(request: BrandCreateRequest): BrandResponse {
-        if (brandRepository.existsByDisplayName(request.name)) {
+        if (brandRepository.findByNormalizedName(NameNormalizer.normalize(request.name)) != null) {
             throw ResourceAlreadyExistsException("Brand '${request.name}' already exists")
         }
         val brand = Brand(

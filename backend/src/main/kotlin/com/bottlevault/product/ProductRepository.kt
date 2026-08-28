@@ -8,18 +8,23 @@ import org.springframework.data.jpa.repository.Query
 import java.util.UUID
 
 interface ProductRepository : JpaRepository<Product, UUID> {
-
     fun findByBrandId(brandId: UUID): List<Product>
 
     fun findByType(type: AlcoholType): List<Product>
 
     fun findByBarcode(barcode: String): Product?
 
-    @Query("""
+    /** Duplicate guard, scoped per brand: two distilleries may both ship a "12 Year Old". */
+    fun findByBrandIdAndNormalizedName(brandId: UUID, normalizedName: String): Product?
+
+    @Query(
+        """
         SELECT p FROM Product p JOIN p.brand b
-        WHERE LOWER(p.displayName) LIKE LOWER(CONCAT('%', :search, '%'))
-           OR LOWER(b.displayName) LIKE LOWER(CONCAT('%', :search, '%'))
+        WHERE p.normalizedName LIKE CONCAT('%', :search, '%')
+           OR b.normalizedName LIKE CONCAT('%', :search, '%')
+           OR b.normalizedAliases LIKE CONCAT('%', :search, '%')
         ORDER BY b.displayName, p.displayName
-    """)
+        """
+    )
     fun search(search: String): List<Product>
 }

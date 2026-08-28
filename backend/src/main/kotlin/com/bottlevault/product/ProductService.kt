@@ -20,7 +20,7 @@ class ProductService(
 ) {
     fun getProducts(brandId: UUID?, type: AlcoholType?, search: String?): List<ProductResponse> {
         val products = when {
-            !search.isNullOrBlank() -> productRepository.search(search)
+            !search.isNullOrBlank() -> productRepository.search(NameNormalizer.normalize(search))
             brandId != null -> productRepository.findByBrandId(brandId)
             type != null -> productRepository.findByType(type)
             else -> productRepository.findAll()
