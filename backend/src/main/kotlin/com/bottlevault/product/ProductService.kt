@@ -20,7 +20,13 @@ class ProductService(
 ) {
     fun getProducts(brandId: UUID?, type: AlcoholType?, search: String?): List<ProductResponse> {
         val products = when {
-            !search.isNullOrBlank() -> productRepository.search(NameNormalizer.normalize(search))
+            !search.isNullOrBlank() -> {
+                val normalized = NameNormalizer.normalize(search)
+                // A query with no letters or digits (e.g. "&", "...") normalizes to "".
+                // LIKE CONCAT('%', :search, '%') on an empty string matches every row,
+                // so guard it explicitly rather than dumping the whole catalogue.
+                if (normalized.isEmpty()) emptyList() else productRepository.search(normalized)
+            }
             brandId != null -> productRepository.findByBrandId(brandId)
             type != null -> productRepository.findByType(type)
             else -> productRepository.findAll()
@@ -39,15 +45,26 @@ class ProductService(
         return ProductResponse.from(product)
     }
 
+    /**
+     * Creating a product that normalizes onto an existing one (within the same
+     * brand) returns that one. From the user's point of view they got the
+     * product they asked for, and throwing here would surface an error for
+     * something that is not a failure.
+     */
     @Transactional
     fun createProduct(request: ProductCreateRequest): ProductResponse {
         val brand = brandRepository.findById(UUID.fromString(request.brandId))
             .orElseThrow { ResourceNotFoundException("Brand not found") }
 
+        val normalized = NameNormalizer.normalize(request.name)
+        productRepository.findByBrandIdAndNormalizedName(brand.id!!, normalized)?.let {
+            return ProductResponse.from(it)
+        }
+
         val product = Product(
             brand = brand,
-            displayName = request.name,
-            normalizedName = NameNormalizer.normalize(request.name),
+            displayName = NameNormalizer.displayName(request.name),
+            normalizedName = normalized,
             barcode = request.barcode,
             type = request.type,
             subtype = request.subtype,

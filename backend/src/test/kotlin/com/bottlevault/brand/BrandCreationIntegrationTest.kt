@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-FileCopyrightText: 2025-2026 toastedcoffee
+package com.bottlevault.brand
+
+import com.bottlevault.brand.dto.BrandCreateRequest
+import com.bottlevault.support.AbstractPostgresIntegrationTest
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+
+@SpringBootTest
+class BrandCreationIntegrationTest : AbstractPostgresIntegrationTest() {
+
+    @Autowired
+    private lateinit var brandService: BrandService
+
+    @Autowired
+    private lateinit var brandRepository: BrandRepository
+
+    @Test
+    fun `submitting a casing variant returns the existing brand rather than throwing`() {
+        val before = brandRepository.count()
+
+        val response = brandService.createBrand(BrandCreateRequest(name = "JAMESON"))
+
+        assertEquals("Jameson", response.name)
+        assertEquals(before, brandRepository.count(), "no new row should have been created")
+    }
+
+    @Test
+    fun `submitting a punctuation variant returns the existing brand`() {
+        val response = brandService.createBrand(BrandCreateRequest(name = "jack daniels"))
+        assertEquals("Jack Daniel's", response.name)
+    }
+
+    @Test
+    fun `a genuinely new brand is created with its submitted casing preserved`() {
+        val response = brandService.createBrand(BrandCreateRequest(name = "BenRiach"))
+        assertEquals("BenRiach", response.name)
+
+        val stored = brandRepository.findByNormalizedName("benriach")
+        assertEquals("BenRiach", stored!!.displayName)
+    }
+
+    @Test
+    fun `a new brand has surrounding whitespace stripped from its display name`() {
+        val response = brandService.createBrand(BrandCreateRequest(name = "  Kirkland  Signature  "))
+        assertEquals("Kirkland Signature", response.name)
+    }
+
+    @Test
+    fun `searching with a term that normalizes to empty returns no results rather than every brand`() {
+        val results = brandService.searchBrands("&")
+        assertTrue(results.isEmpty())
+    }
+
+    @Test
+    fun `searching with only punctuation returns no results`() {
+        val results = brandService.searchBrands("...")
+        assertTrue(results.isEmpty())
+    }
+}

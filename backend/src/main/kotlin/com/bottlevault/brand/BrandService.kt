@@ -4,7 +4,6 @@ package com.bottlevault.brand
 
 import com.bottlevault.brand.dto.BrandCreateRequest
 import com.bottlevault.brand.dto.BrandResponse
-import com.bottlevault.common.exception.ResourceAlreadyExistsException
 import com.bottlevault.common.exception.ResourceNotFoundException
 import com.bottlevault.common.text.NameNormalizer
 import org.springframework.data.domain.Sort
@@ -25,19 +24,33 @@ class BrandService(private val brandRepository: BrandRepository) {
         return BrandResponse.from(brand)
     }
 
-    fun searchBrands(query: String): List<BrandResponse> =
-        brandRepository.searchByNormalized(NameNormalizer.normalize(query)).map { BrandResponse.from(it) }
+    fun searchBrands(query: String): List<BrandResponse> {
+        val normalized = NameNormalizer.normalize(query)
+        // A query with no letters or digits (e.g. "&", "...") normalizes to "".
+        // LIKE CONCAT('%', :search, '%') on an empty string matches every row,
+        // so guard it explicitly rather than dumping the whole catalogue.
+        if (normalized.isEmpty()) return emptyList()
+        return brandRepository.searchByNormalized(normalized).map { BrandResponse.from(it) }
+    }
 
+    /**
+     * Creating a brand that normalizes onto an existing one returns that one.
+     * From the user's point of view they got the brand they asked for, and the
+     * old behavior (throwing ResourceAlreadyExistsException) surfaced an error
+     * for something that is not a failure.
+     */
     @Transactional
     fun createBrand(request: BrandCreateRequest): BrandResponse {
-        if (brandRepository.findByNormalizedName(NameNormalizer.normalize(request.name)) != null) {
-            throw ResourceAlreadyExistsException("Brand '${request.name}' already exists")
+        val normalized = NameNormalizer.normalize(request.name)
+        brandRepository.findByNormalizedName(normalized)?.let {
+            return BrandResponse.from(it)
         }
+
         val brand = Brand(
-            displayName = request.name,
-            normalizedName = NameNormalizer.normalize(request.name),
+            displayName = NameNormalizer.displayName(request.name),
+            normalizedName = normalized,
             country = request.country,
-            website = request.website
+            website = request.website,
         )
         return BrandResponse.from(brandRepository.save(brand))
     }
