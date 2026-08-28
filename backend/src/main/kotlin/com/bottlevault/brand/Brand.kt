@@ -13,8 +13,19 @@ class Brand(
     @GeneratedValue(strategy = GenerationType.UUID)
     val id: UUID? = null,
 
-    @Column(nullable = false, unique = true)
-    var name: String,
+    /** What a human sees. Trimmed and whitespace-collapsed; case and punctuation preserved. */
+    @Column(name = "display_name", nullable = false)
+    var displayName: String,
+
+    /** Matching key. Unique. Always derived via NameNormalizer, never set by hand. */
+    @Column(name = "normalized_name", nullable = false, unique = true)
+    var normalizedName: String,
+
+    /** Extra search terms, e.g. "Suntory" against Hibiki. A search affordance, not a claim of ownership. */
+    var aliases: String? = null,
+
+    @Column(name = "normalized_aliases")
+    var normalizedAliases: String? = null,
 
     var country: String? = null,
 

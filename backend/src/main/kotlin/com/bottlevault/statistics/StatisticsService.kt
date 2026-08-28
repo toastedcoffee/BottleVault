@@ -72,8 +72,8 @@ class StatisticsService(private val bottleRepository: BottleRepository) {
 
     private fun toBottleSummary(b: Bottle) = BottleSummary(
         id = b.id.toString(),
-        productName = b.product.name,
-        brandName = b.product.brand.name,
+        productName = b.product.displayName,
+        brandName = b.product.brand.displayName,
         type = b.product.type.name,
         rating = b.rating,
         purchaseCost = b.purchaseCost,

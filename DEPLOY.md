@@ -334,6 +334,22 @@ migration has since run — restore the matching data snapshot too.
 
 ---
 
+## 7a. Pre-check before the name normalization migration (V7 to V9)
+
+V9 adds a `UNIQUE` constraint on a normalized form of every brand and product
+name. If two rows differ only by case, whitespace, punctuation or diacritics,
+the migration fails and the API will not start. Run this **before** updating,
+and merge anything it returns:
+
+```bash
+docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT lower(regexp_replace(regexp_replace(trim(display_name), '[^[:alnum:][:space:]]', '', 'g'), '\s+', ' ', 'g')) AS normalized, count(*) AS variants, string_agg(display_name, ' | ') AS spellings FROM brands GROUP BY 1 HAVING count(*) > 1;"
+```
+
+Zero rows means the migration will apply cleanly. This is a **Class B**,
+backup-required update: it renames columns and takes 2 to 5 minutes of downtime.
+
+---
+
 ## 8. Future hardening (not yet built)
 
 - **CI gate:** a job that detects a new `backend/src/main/resources/db/migration/V*.sql`

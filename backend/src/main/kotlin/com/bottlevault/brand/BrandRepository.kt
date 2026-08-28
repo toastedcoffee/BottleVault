@@ -8,8 +8,8 @@ import java.util.UUID
 
 interface BrandRepository : JpaRepository<Brand, UUID> {
 
-    @Query("SELECT b FROM Brand b WHERE LOWER(b.name) LIKE LOWER(CONCAT('%', :search, '%')) ORDER BY b.name")
-    fun searchByName(search: String): List<Brand>
+    @Query("SELECT b FROM Brand b WHERE LOWER(b.displayName) LIKE LOWER(CONCAT('%', :search, '%')) ORDER BY b.displayName")
+    fun searchByDisplayName(search: String): List<Brand>
 
-    fun existsByName(name: String): Boolean
+    fun existsByDisplayName(displayName: String): Boolean
 }

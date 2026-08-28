@@ -5,6 +5,7 @@ package com.bottlevault.product
 import com.bottlevault.brand.BrandRepository
 import com.bottlevault.common.exception.ResourceNotFoundException
 import com.bottlevault.common.model.AlcoholType
+import com.bottlevault.common.text.NameNormalizer
 import com.bottlevault.product.dto.ProductCreateRequest
 import com.bottlevault.product.dto.ProductResponse
 import org.springframework.stereotype.Service
@@ -45,7 +46,8 @@ class ProductService(
 
         val product = Product(
             brand = brand,
-            name = request.name,
+            displayName = request.name,
+            normalizedName = NameNormalizer.normalize(request.name),
             barcode = request.barcode,
             type = request.type,
             subtype = request.subtype,

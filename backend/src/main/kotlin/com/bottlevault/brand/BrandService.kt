@@ -6,6 +6,7 @@ import com.bottlevault.brand.dto.BrandCreateRequest
 import com.bottlevault.brand.dto.BrandResponse
 import com.bottlevault.common.exception.ResourceAlreadyExistsException
 import com.bottlevault.common.exception.ResourceNotFoundException
+import com.bottlevault.common.text.NameNormalizer
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -16,7 +17,7 @@ import java.util.UUID
 class BrandService(private val brandRepository: BrandRepository) {
 
     fun getAllBrands(): List<BrandResponse> =
-        brandRepository.findAll(Sort.by("name")).map { BrandResponse.from(it) }
+        brandRepository.findAll(Sort.by("displayName")).map { BrandResponse.from(it) }
 
     fun getBrandById(id: UUID): BrandResponse {
         val brand = brandRepository.findById(id)
@@ -25,15 +26,16 @@ class BrandService(private val brandRepository: BrandRepository) {
     }
 
     fun searchBrands(query: String): List<BrandResponse> =
-        brandRepository.searchByName(query).map { BrandResponse.from(it) }
+        brandRepository.searchByDisplayName(query).map { BrandResponse.from(it) }
 
     @Transactional
     fun createBrand(request: BrandCreateRequest): BrandResponse {
-        if (brandRepository.existsByName(request.name)) {
+        if (brandRepository.existsByDisplayName(request.name)) {
             throw ResourceAlreadyExistsException("Brand '${request.name}' already exists")
         }
         val brand = Brand(
-            name = request.name,
+            displayName = request.name,
+            normalizedName = NameNormalizer.normalize(request.name),
             country = request.country,
             website = request.website
         )

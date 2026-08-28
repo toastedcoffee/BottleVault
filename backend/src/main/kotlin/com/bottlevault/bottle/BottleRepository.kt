@@ -32,8 +32,8 @@ interface BottleRepository : JpaRepository<Bottle, UUID> {
         WHERE b.user.id = :userId
         AND (:status IS NULL OR b.status = :status)
         AND (:type IS NULL OR p.type = :type)
-        AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%'))
-             OR LOWER(br.name) LIKE LOWER(CONCAT('%', :search, '%')))
+        AND (LOWER(p.displayName) LIKE LOWER(CONCAT('%', :search, '%'))
+             OR LOWER(br.displayName) LIKE LOWER(CONCAT('%', :search, '%')))
     """)
     fun findFiltered(
         userId: UUID,

@@ -17,9 +17,9 @@ interface ProductRepository : JpaRepository<Product, UUID> {
 
     @Query("""
         SELECT p FROM Product p JOIN p.brand b
-        WHERE LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%'))
-           OR LOWER(b.name) LIKE LOWER(CONCAT('%', :search, '%'))
-        ORDER BY b.name, p.name
+        WHERE LOWER(p.displayName) LIKE LOWER(CONCAT('%', :search, '%'))
+           OR LOWER(b.displayName) LIKE LOWER(CONCAT('%', :search, '%'))
+        ORDER BY b.displayName, p.displayName
     """)
     fun search(search: String): List<Product>
 }

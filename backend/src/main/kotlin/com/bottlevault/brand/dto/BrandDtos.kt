@@ -14,7 +14,7 @@ data class BrandResponse(
     companion object {
         fun from(brand: Brand) = BrandResponse(
             id = brand.id.toString(),
-            name = brand.name,
+            name = brand.displayName,
             country = brand.country,
             website = brand.website
         )
