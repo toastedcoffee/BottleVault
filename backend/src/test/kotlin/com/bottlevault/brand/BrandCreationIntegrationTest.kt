@@ -5,6 +5,7 @@ package com.bottlevault.brand
 import com.bottlevault.brand.dto.BrandCreateRequest
 import com.bottlevault.support.AbstractPostgresIntegrationTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -60,5 +61,30 @@ class BrandCreationIntegrationTest : AbstractPostgresIntegrationTest() {
     fun `searching with only punctuation returns no results`() {
         val results = brandService.searchBrands("...")
         assertTrue(results.isEmpty())
+    }
+
+    @Test
+    fun `a punctuation-only name is rejected rather than silently squatting on normalizedName empty`() {
+        val before = brandRepository.count()
+
+        val ex = assertThrows(IllegalArgumentException::class.java) {
+            brandService.createBrand(BrandCreateRequest(name = "???"))
+        }
+
+        assertTrue(ex.message!!.contains("letter or number"))
+        assertEquals(before, brandRepository.count(), "no row should have been created")
+    }
+
+    @Test
+    fun `a name that is a single non-breaking space is rejected`() {
+        // U+00A0 as a Kotlin escape, not a literal character, so it survives editing.
+        val before = brandRepository.count()
+
+        val ex = assertThrows(IllegalArgumentException::class.java) {
+            brandService.createBrand(BrandCreateRequest(name = "\u00A0"))
+        }
+
+        assertTrue(ex.message!!.contains("letter or number"))
+        assertEquals(before, brandRepository.count(), "no row should have been created")
     }
 }

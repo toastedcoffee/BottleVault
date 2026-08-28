@@ -10,7 +10,7 @@ import java.text.Normalizer as UnicodeNormalizer
  * Two derived forms:
  *  - [displayName] is what a human sees. Trimmed and whitespace-collapsed only,
  *    because case, punctuation and diacritics all carry meaning: BenRiach,
- *    Jack Dan'iels, Patrón.
+ *    Jack Daniel's, Patrón.
  *  - [normalize] is the matching key backing the UNIQUE constraint and every
  *    duplicate check. Aggressive by design.
  *

@@ -42,6 +42,14 @@ class BrandService(private val brandRepository: BrandRepository) {
     @Transactional
     fun createBrand(request: BrandCreateRequest): BrandResponse {
         val normalized = NameNormalizer.normalize(request.name)
+        // @NotBlank on the request only rejects whitespace <= U+0020; a name made
+        // entirely of punctuation (or a single U+00A0) passes validation but
+        // normalizes to "". Without this guard that row would permanently squat
+        // on normalizedName = "", swallow every later punctuation-only submission,
+        // and be unreachable via search (which also refuses an empty needle).
+        if (normalized.isEmpty()) {
+            throw IllegalArgumentException("Brand name must contain at least one letter or number")
+        }
         brandRepository.findByNormalizedName(normalized)?.let {
             return BrandResponse.from(it)
         }

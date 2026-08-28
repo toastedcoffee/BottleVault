@@ -57,6 +57,15 @@ class ProductService(
             .orElseThrow { ResourceNotFoundException("Brand not found") }
 
         val normalized = NameNormalizer.normalize(request.name)
+        // @NotBlank on the request only rejects whitespace <= U+0020; a name made
+        // entirely of punctuation (or a single U+00A0) passes validation but
+        // normalizes to "". Without this guard that row would permanently squat
+        // on normalizedName = "" for this brand, swallow every later
+        // punctuation-only submission, and be unreachable via search (which also
+        // refuses an empty needle).
+        if (normalized.isEmpty()) {
+            throw IllegalArgumentException("Product name must contain at least one letter or number")
+        }
         productRepository.findByBrandIdAndNormalizedName(brand.id!!, normalized)?.let {
             return ProductResponse.from(it)
         }

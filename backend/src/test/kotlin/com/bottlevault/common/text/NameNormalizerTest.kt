@@ -17,13 +17,25 @@ class NameNormalizerTest {
 
     @Test
     fun `displayName collapses non-breaking and zero-width whitespace`() {
-        // WARNING: the three strings below contain LITERAL U+00A0 (non-breaking
-        // space) and U+200B (zero-width space) characters, which render
-        // identically to an ordinary space. Do not "tidy" them, and do not
-        // retype these lines by hand: replacing them with plain spaces turns
-        // this into a test that passes trivially and proves nothing. If your
-        // editor strips them, rewrite as   and ​ escapes instead.
-        // Verify with: grep -P ' ' on the saved file.
+        // WARNING: the three string literals in this test (below) contain REAL,
+        // literal instances of two invisible Unicode characters: U+00A0 (NO-BREAK
+        // SPACE) and U+200B (ZERO WIDTH SPACE). Both render identically to an
+        // ordinary space in most editors and terminals. Do not retype these lines
+        // by hand and do not "clean up" whitespace inside the quoted strings --
+        // swapping either character for a plain ASCII space silently turns this
+        // test into a tautology (a string compared to itself) without failing.
+        // This comment names the characters by codepoint instead of embedding one,
+        // because an embedded literal is exactly what a future edit can flatten to
+        // a plain space -- that already happened once to an earlier draft of this
+        // very comment. To confirm the literals are still intact after any edit,
+        // count their UTF-8 byte sequences directly (this command has no special
+        // characters of its own -- the byte values are written out as decimal,
+        // not typed as escapes or literals) from the repo root:
+        //   python -c "d=open('backend/src/test/kotlin/com/bottlevault/common/text/NameNormalizerTest.kt','rb').read(); print(d.count(bytes([194,160])), d.count(bytes([226,128,139])))"
+        // Expect two nonzero counts: occurrences of U+00A0 (UTF-8 bytes 194,160),
+        // then of U+200B (UTF-8 bytes 226,128,139). A zero means the literal was
+        // lost -- restore it by name and codepoint, never by copy-pasting from
+        // this comment.
         assertEquals("Wilderness Trail", NameNormalizer.displayName("Wilderness Trail"))
         assertEquals("Wilderness Trail", NameNormalizer.displayName("Wilderness Trail​"))
         assertEquals("Wilderness Trail", NameNormalizer.displayName(" Wilderness Trail "))
