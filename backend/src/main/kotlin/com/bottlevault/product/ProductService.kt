@@ -9,6 +9,7 @@ import com.bottlevault.common.model.AlcoholType
 import com.bottlevault.common.text.NameNormalizer
 import com.bottlevault.product.dto.ProductCreateRequest
 import com.bottlevault.product.dto.ProductResponse
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -90,7 +91,20 @@ class ProductService(
                     )
                 }
                 existing.barcode = submittedBarcode
-                productRepository.save(existing)
+                // The lookup above is not atomic with this save: two concurrent scans
+                // of the same barcode can both find nothing and both try to claim it.
+                // The database's unique constraint is what actually prevents the
+                // duplicate, but it surfaces as a DataIntegrityViolationException,
+                // which maps to 500. Translate it to the same 409 the check above
+                // produces, so the loser of the race gets the correct answer rather
+                // than an unmapped server error.
+                try {
+                    productRepository.saveAndFlush(existing)
+                } catch (e: DataIntegrityViolationException) {
+                    throw ResourceAlreadyExistsException(
+                        "Barcode $submittedBarcode is already registered to a different product"
+                    )
+                }
             }
             return ProductResponse.from(existing)
         }

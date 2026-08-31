@@ -6,8 +6,11 @@ import com.bottlevault.brand.Brand
 import com.bottlevault.brand.BrandRepository
 import com.bottlevault.common.exception.ResourceAlreadyExistsException
 import com.bottlevault.common.model.AlcoholType
+import com.bottlevault.common.text.NameNormalizer
 import com.bottlevault.product.dto.ProductCreateRequest
 import com.bottlevault.support.AbstractPostgresIntegrationTest
+import org.mockito.Mockito.doReturn
+import org.mockito.Mockito.reset
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -16,6 +19,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.boot.test.context.SpringBootTest
 import java.util.UUID
 
@@ -31,7 +35,7 @@ class ProductCreationGuardIntegrationTest : AbstractPostgresIntegrationTest() {
     @Autowired
     private lateinit var productService: ProductService
 
-    @Autowired
+    @MockitoSpyBean
     private lateinit var productRepository: ProductRepository
 
     @Autowired
@@ -41,10 +45,18 @@ class ProductCreationGuardIntegrationTest : AbstractPostgresIntegrationTest() {
 
     @BeforeEach
     fun setUp() {
+        // One UUID, with normalizedName derived from displayName. Two separate
+        // randomUUID() calls would persist a brand whose normalized name is not the
+        // normalization of its display name -- a row no code path can produce. That
+        // is not merely untidy: the Testcontainers database is a JVM-wide singleton
+        // shared by every test class, and NameNormalizationIntegrationTest asserts
+        // that invariant across ALL brands, so a bad fixture here fails a different
+        // class depending on execution order.
+        val brandName = "Suntory-${UUID.randomUUID()}"
         val brand = brandRepository.save(
             Brand(
-                displayName = "Suntory-${UUID.randomUUID()}",
-                normalizedName = "suntory-${UUID.randomUUID()}",
+                displayName = brandName,
+                normalizedName = NameNormalizer.normalize(brandName),
             )
         )
         brandId = brand.id!!
@@ -141,10 +153,15 @@ class ProductCreationGuardIntegrationTest : AbstractPostgresIntegrationTest() {
 
     @Test
     fun `a barcode already registered to a different product is rejected with 409, not silently dropped or 500`() {
+        val otherBrandName = "OtherBrand-${UUID.randomUUID()}"
         val otherBrand = brandRepository.save(
             Brand(
-                displayName = "OtherBrand-${UUID.randomUUID()}",
-                normalizedName = "otherbrand-${UUID.randomUUID()}",
+                // One UUID, normalized from the display name, so the fixture models a
+                // row the application could actually produce. Two separate
+                // randomUUID() calls would leave normalizedName unrelated to
+                // displayName, which no code path can create.
+                displayName = otherBrandName,
+                normalizedName = NameNormalizer.normalize(otherBrandName),
             )
         )
         val elsewhere = productRepository.save(
@@ -183,5 +200,69 @@ class ProductCreationGuardIntegrationTest : AbstractPostgresIntegrationTest() {
         val reloadedElsewhere = productRepository.findById(elsewhere.id!!).get()
         assertEquals("3333333333333", reloadedElsewhere.barcode, "the other product's barcode must be unaffected")
         assertNotNull(reloadedElsewhere.barcode)
+    }
+
+    /**
+     * Covers the race the pre-check cannot close: findByBarcode and the save are not
+     * atomic, so a concurrent scan can claim the barcode in between. The database's
+     * unique constraint is what actually prevents the duplicate, and without the
+     * translation in createProduct it surfaces as a 500.
+     *
+     * Simulated deterministically rather than with threads: the spy makes
+     * findByBarcode report no conflict while the conflicting row genuinely exists,
+     * which is exactly the state a lost race leaves behind. Save is left real so the
+     * constraint fires for real.
+     *
+     * This is what proves `saveAndFlush` rather than `save` is load-bearing. A plain
+     * save on a managed entity can defer the flush to transaction commit, outside the
+     * try block, and the exception would escape untranslated. Every other test in this
+     * file passes either way.
+     */
+    @Test
+    fun `losing the barcode race yields 409, not an unmapped 500`() {
+        val otherBrandName = "RaceBrand-${UUID.randomUUID()}"
+        val otherBrand = brandRepository.save(
+            Brand(
+                displayName = otherBrandName,
+                normalizedName = NameNormalizer.normalize(otherBrandName),
+            )
+        )
+        val contended = "4444444444444"
+        productRepository.save(
+            Product(
+                brand = otherBrand,
+                displayName = "Winner",
+                normalizedName = "winner",
+                barcode = contended,
+                type = AlcoholType.WHISKEY
+            )
+        )
+        val existing = productRepository.save(
+            Product(
+                brand = brandRepository.findById(brandId).get(),
+                displayName = "Original",
+                normalizedName = "original",
+                barcode = null,
+                type = AlcoholType.WHISKEY
+            )
+        )
+
+        // Report no conflict, as it would if the winner committed after this read.
+        doReturn(null).`when`(productRepository).findByBarcode(contended)
+
+        assertThrows(ResourceAlreadyExistsException::class.java) {
+            productService.createProduct(
+                ProductCreateRequest(
+                    name = "Original",
+                    brandId = brandId.toString(),
+                    type = AlcoholType.WHISKEY,
+                    barcode = contended
+                )
+            )
+        }
+
+        reset(productRepository)
+        val reloaded = productRepository.findById(existing.id!!).get()
+        assertNull(reloaded.barcode, "the loser must not have taken a barcode that is already claimed")
     }
 }
