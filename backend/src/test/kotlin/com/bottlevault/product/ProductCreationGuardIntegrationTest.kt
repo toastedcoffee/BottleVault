@@ -6,6 +6,7 @@ import com.bottlevault.brand.Brand
 import com.bottlevault.brand.BrandRepository
 import com.bottlevault.common.exception.ResourceAlreadyExistsException
 import com.bottlevault.common.model.AlcoholType
+import com.bottlevault.common.text.NameNormalizer
 import com.bottlevault.product.dto.ProductCreateRequest
 import com.bottlevault.support.AbstractPostgresIntegrationTest
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -141,10 +142,15 @@ class ProductCreationGuardIntegrationTest : AbstractPostgresIntegrationTest() {
 
     @Test
     fun `a barcode already registered to a different product is rejected with 409, not silently dropped or 500`() {
+        val otherBrandName = "OtherBrand-${UUID.randomUUID()}"
         val otherBrand = brandRepository.save(
             Brand(
-                displayName = "OtherBrand-${UUID.randomUUID()}",
-                normalizedName = "otherbrand-${UUID.randomUUID()}",
+                // One UUID, normalized from the display name, so the fixture models a
+                // row the application could actually produce. Two separate
+                // randomUUID() calls would leave normalizedName unrelated to
+                // displayName, which no code path can create.
+                displayName = otherBrandName,
+                normalizedName = NameNormalizer.normalize(otherBrandName),
             )
         )
         val elsewhere = productRepository.save(
