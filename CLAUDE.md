@@ -37,6 +37,29 @@ For large multi-file efforts (restyles, migrations), plan phases and land or
 verify them incrementally rather than emitting one giant change — long single
 outputs have been lost to output-limit truncation before.
 
+Two traps that have each cost real time here, both of which make a change look
+verified when it is not:
+
+**A Gradle `UP-TO-DATE` is not a test result.** `./gradlew test` reports
+`BUILD SUCCESSFUL` while skipping the tests entirely when it judges inputs
+unchanged, which also hides a Docker outage — every Testcontainers test
+"passes" because none ran. Before treating a backend run as evidence, use
+`./gradlew test --rerun-tasks`, or read the counts out of
+`build/test-results/test/TEST-*.xml` rather than trusting the console. Check the
+daemon first with `timeout 20 docker info --format '{{.ServerVersion}}'` — never
+a bare `docker info`, which hangs for minutes.
+
+**JPQL and Spring Data derived queries are not compile-checked.** Property names
+inside `@Query` strings are literals, and derived method names like
+`findByBrandIdAndNormalizedName` resolve reflectively at context startup. Rename
+a JPA property and `./gradlew compileKotlin` still passes; the failure surfaces
+only when Spring boots, or when an existing caller hits the changed query. During
+the `name` → `displayName` rename this bit twice: three callers
+(`BottleRepository.findFiltered`, `BrandRepository`, `StatisticsService`) broke
+at startup, and later a caller passing a raw unnormalized string to a
+now-normalized query failed 19 tests. **After any JPA property rename, run the
+full suite — a green compile and a green focused test prove nothing.**
+
 ## Database portability: H2 vs Postgres
 
 Flyway migrations and any SQL shared across profiles must parse under **both**
