@@ -8,8 +8,27 @@ import java.util.UUID
 
 interface BrandRepository : JpaRepository<Brand, UUID> {
 
-    @Query("SELECT b FROM Brand b WHERE LOWER(b.name) LIKE LOWER(CONCAT('%', :search, '%')) ORDER BY b.name")
-    fun searchByName(search: String): List<Brand>
+    /**
+     * The duplicate guard and the lookup path. Callers must pass a value already
+     * run through NameNormalizer.normalize, so this stays an exact match against
+     * the unique column.
+     */
+    fun findByNormalizedName(normalizedName: String): Brand?
 
-    fun existsByName(name: String): Boolean
+    /**
+     * Search spans the brand's own normalized name, its normalized aliases, and
+     * the normalized names of its products. Aliases are what let "suntory" find
+     * Hibiki, where the term appears in no name field at all.
+     */
+    @Query(
+        """
+        SELECT DISTINCT b FROM Brand b
+        LEFT JOIN Product p ON p.brand = b
+        WHERE b.normalizedName LIKE CONCAT('%', :search, '%')
+           OR b.normalizedAliases LIKE CONCAT('%', :search, '%')
+           OR p.normalizedName LIKE CONCAT('%', :search, '%')
+        ORDER BY b.displayName
+        """
+    )
+    fun searchByNormalized(search: String): List<Brand>
 }

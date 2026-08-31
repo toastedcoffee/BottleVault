@@ -7,14 +7,14 @@ import jakarta.validation.constraints.NotBlank
 
 data class BrandResponse(
     val id: String,
-    val name: String,
+    val displayName: String,
     val country: String?,
     val website: String?
 ) {
     companion object {
         fun from(brand: Brand) = BrandResponse(
             id = brand.id.toString(),
-            name = brand.name,
+            displayName = brand.displayName,
             country = brand.country,
             website = brand.website
         )

@@ -20,8 +20,11 @@ class Product(
     @JoinColumn(name = "brand_id", nullable = false)
     var brand: Brand,
 
-    @Column(nullable = false)
-    var name: String,
+    @Column(name = "display_name", nullable = false)
+    var displayName: String,
+
+    @Column(name = "normalized_name", nullable = false)
+    var normalizedName: String,
 
     @Column(unique = true)
     var barcode: String? = null,

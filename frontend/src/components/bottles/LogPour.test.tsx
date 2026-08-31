@@ -26,7 +26,7 @@ function makeBottle(overrides: Partial<BottleResponse> = {}): BottleResponse {
     updatedAt: '2026-01-15T00:00:00Z',
     product: {
       id: 'p1',
-      name: 'Test Product',
+      displayName: 'Test Product',
       barcode: null,
       type: 'BOURBON',
       subtype: null,
@@ -35,7 +35,7 @@ function makeBottle(overrides: Partial<BottleResponse> = {}): BottleResponse {
       description: null,
       imageUrl: null,
       isUserCreated: false,
-      brand: { id: 'br1', name: 'Test Brand', country: null, website: null },
+      brand: { id: 'br1', displayName: 'Test Brand', country: null, website: null },
     },
     ...overrides,
   };

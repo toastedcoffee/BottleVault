@@ -88,7 +88,7 @@ class BarcodeIntegrationTest : AbstractPostgresIntegrationTest() {
         assertTrue(response.found, "should find seeded product")
         assertEquals("local", response.source)
         val product = assertNotNull(response.product)
-        assertEquals("Old No. 7 Tennessee Whiskey", product.name)
+        assertEquals("Old No. 7 Tennessee Whiskey", product.displayName)
 
         Mockito.verify(upcItemDb, Mockito.never()).lookup(anyString())
         Mockito.verify(openFoodFacts, Mockito.never()).lookup(anyString())

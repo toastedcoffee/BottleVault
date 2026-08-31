@@ -24,16 +24,16 @@ export default function BottleCard({ bottle, onDelete }: BottleCardProps) {
         bottleId={bottle.id}
         hasImage={!!bottle.imagePath}
         className="w-full h-32 object-cover rounded-t-lg"
-        alt={product.name}
+        alt={product.displayName}
       />
       <div className="p-4">
         <div className="flex justify-between items-start mb-2">
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-primary-bright uppercase tracking-wide truncate">
-              {product.brand.name}
+              {product.brand.displayName}
             </p>
             <h3 className="text-sm font-semibold text-text-hi mt-0.5 truncate">
-              {product.name}
+              {product.displayName}
             </h3>
           </div>
           <StatusDropdown bottleId={bottle.id} currentStatus={bottle.status} />
