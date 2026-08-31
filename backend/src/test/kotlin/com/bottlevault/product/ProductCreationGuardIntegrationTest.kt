@@ -4,10 +4,13 @@ package com.bottlevault.product
 
 import com.bottlevault.brand.Brand
 import com.bottlevault.brand.BrandRepository
+import com.bottlevault.common.exception.ResourceAlreadyExistsException
 import com.bottlevault.common.model.AlcoholType
 import com.bottlevault.product.dto.ProductCreateRequest
 import com.bottlevault.support.AbstractPostgresIntegrationTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -74,5 +77,111 @@ class ProductCreationGuardIntegrationTest : AbstractPostgresIntegrationTest() {
 
         assertTrue(ex.message!!.contains("letter or number"))
         assertEquals(before, productRepository.count(), "no row should have been created")
+    }
+
+    @Test
+    fun `a barcode submitted on a collision is attached to the existing barcode-less product`() {
+        val existing = productRepository.save(
+            Product(
+                brand = brandRepository.findById(brandId).get(),
+                displayName = "Original",
+                normalizedName = "original",
+                barcode = null,
+                type = AlcoholType.WHISKEY
+            )
+        )
+
+        val response = productService.createProduct(
+            ProductCreateRequest(
+                name = "Original",
+                brandId = brandId.toString(),
+                type = AlcoholType.WHISKEY,
+                barcode = "5011007003005"
+            )
+        )
+
+        assertEquals(existing.id.toString(), response.id, "should return the existing product, not create a new one")
+        assertEquals("5011007003005", response.barcode)
+
+        val reloaded = productRepository.findById(existing.id!!).get()
+        assertEquals(
+            "5011007003005",
+            reloaded.barcode,
+            "the barcode must actually be persisted, not just reflected in the response"
+        )
+    }
+
+    @Test
+    fun `an existing barcode on a collision is left untouched`() {
+        val existing = productRepository.save(
+            Product(
+                brand = brandRepository.findById(brandId).get(),
+                displayName = "Original",
+                normalizedName = "original",
+                barcode = "1111111111111",
+                type = AlcoholType.WHISKEY
+            )
+        )
+
+        val response = productService.createProduct(
+            ProductCreateRequest(
+                name = "Original",
+                brandId = brandId.toString(),
+                type = AlcoholType.WHISKEY,
+                barcode = "2222222222222"
+            )
+        )
+
+        assertEquals(existing.id.toString(), response.id)
+        assertEquals("1111111111111", response.barcode, "the pre-existing barcode must win, not the newly submitted one")
+
+        val reloaded = productRepository.findById(existing.id!!).get()
+        assertEquals("1111111111111", reloaded.barcode)
+    }
+
+    @Test
+    fun `a barcode already registered to a different product is rejected with 409, not silently dropped or 500`() {
+        val otherBrand = brandRepository.save(
+            Brand(
+                displayName = "OtherBrand-${UUID.randomUUID()}",
+                normalizedName = "otherbrand-${UUID.randomUUID()}",
+            )
+        )
+        val elsewhere = productRepository.save(
+            Product(
+                brand = otherBrand,
+                displayName = "Elsewhere",
+                normalizedName = "elsewhere",
+                barcode = "3333333333333",
+                type = AlcoholType.WHISKEY
+            )
+        )
+        val existing = productRepository.save(
+            Product(
+                brand = brandRepository.findById(brandId).get(),
+                displayName = "Original",
+                normalizedName = "original",
+                barcode = null,
+                type = AlcoholType.WHISKEY
+            )
+        )
+
+        assertThrows(ResourceAlreadyExistsException::class.java) {
+            productService.createProduct(
+                ProductCreateRequest(
+                    name = "Original",
+                    brandId = brandId.toString(),
+                    type = AlcoholType.WHISKEY,
+                    barcode = "3333333333333"
+                )
+            )
+        }
+
+        val reloadedExisting = productRepository.findById(existing.id!!).get()
+        assertNull(reloadedExisting.barcode, "the existing barcode-less product must not gain a barcode that belongs elsewhere")
+
+        val reloadedElsewhere = productRepository.findById(elsewhere.id!!).get()
+        assertEquals("3333333333333", reloadedElsewhere.barcode, "the other product's barcode must be unaffected")
+        assertNotNull(reloadedElsewhere.barcode)
     }
 }

@@ -3,6 +3,7 @@
 package com.bottlevault.product
 
 import com.bottlevault.brand.BrandRepository
+import com.bottlevault.common.exception.ResourceAlreadyExistsException
 import com.bottlevault.common.exception.ResourceNotFoundException
 import com.bottlevault.common.model.AlcoholType
 import com.bottlevault.common.text.NameNormalizer
@@ -66,8 +67,32 @@ class ProductService(
         if (normalized.isEmpty()) {
             throw IllegalArgumentException("Product name must contain at least one letter or number")
         }
-        productRepository.findByBrandIdAndNormalizedName(brand.id!!, normalized)?.let {
-            return ProductResponse.from(it)
+        productRepository.findByBrandIdAndNormalizedName(brand.id!!, normalized)?.let { existing ->
+            // The find-or-create above can match a product that predates barcode
+            // scanning (or was created by hand) and so has no barcode yet. 32 of 34
+            // products in the production catalogue arrived via barcode scan, so
+            // discarding a submitted barcode here would mean that same bottle
+            // permanently misses local lookup and re-hits the external provider on
+            // every future scan. Only fill a gap - a product that already has a
+            // barcode keeps it; the submitted one is not a correction.
+            val submittedBarcode = request.barcode?.takeIf { it.isNotBlank() }
+            if (existing.barcode == null && submittedBarcode != null) {
+                // Product.barcode is globally unique, not scoped to this brand/product.
+                // If the submitted barcode already belongs to a different row, saving
+                // it here would violate that constraint. Surface it as a 409 - the
+                // same status the old pre-normalization duplicate-name path used -
+                // rather than swallowing the conflict (which would leave the scan
+                // silently unresolved) or letting the DataIntegrityViolationException
+                // bubble up as an unmapped 500.
+                productRepository.findByBarcode(submittedBarcode)?.let {
+                    throw ResourceAlreadyExistsException(
+                        "Barcode $submittedBarcode is already registered to a different product"
+                    )
+                }
+                existing.barcode = submittedBarcode
+                productRepository.save(existing)
+            }
+            return ProductResponse.from(existing)
         }
 
         val product = Product(
