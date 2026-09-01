@@ -1,0 +1,228 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2025-2026 toastedcoffee
+name: Migration gate
+
+# Two different hazards, two different responses.
+#
+# Adding a migration risks forgetting a backup: the deploy still succeeds, you
+# just have no rollback if the migration turns out to be wrong. Advisory --
+# label it and comment the runbook, but do not block the merge.
+#
+# Changing a migration that already exists on the base branch means the deploy
+# *fails*: Flyway validates on startup, hits a checksum mismatch or a missing
+# applied migration, and refuses to boot. A label cannot stop a merge, and this
+# one needs to, so the check goes red instead.
+
+on:
+  pull_request:
+    branches: [main]
+    # `labeled`/`unlabeled` are here so the migration-edit-approved escape
+    # hatch turns the check green without needing an empty push. This does not
+    # recurse when the job applies `requires-backup` itself: GitHub suppresses
+    # workflow triggers from actions taken with GITHUB_TOKEN.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+concurrency:
+  group: migration-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write        # label creation goes through the issues API
+
+jobs:
+  migration-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Self-test the classifier
+        # The classifier fails silently when wrong -- one that calls everything
+        # clean is indistinguishable from one with nothing to report. Proving it
+        # still works costs under a second, so it runs on every PR rather than
+        # when someone remembers.
+        run: bash scripts/test-migration-changes.sh
+
+      - name: Classify the migration changes in this PR
+        env:
+          # Crossed into real env vars so no ${{ }} expression is ever embedded
+          # in a script body -- same GHA template-injection stance (CWE-94) as
+          # the publish job in ci.yml.
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          RUNBOOK_BASE: ${{ github.server_url }}/${{ github.repository }}/blob/main/DEPLOY.md
+          OVERRIDE_LABEL: migration-edit-approved
+          # Evaluated by GitHub, not by the shell, so a label name can never
+          # reach the script as anything but the literal 1 or 0.
+          #
+          # A new push dismisses the override, the same way GitHub dismisses a
+          # stale review approval. Without the `synchronize` clause the label
+          # authorises the PR rather than the diff: approve an edit to V5, then
+          # push a second commit editing V3, and the never-reviewed V3 edit
+          # rides in green on V5's approval. The label is also physically
+          # removed below, so the PR does not look approved when it is not.
+          OVERRIDE_ACTIVE: ${{ github.event.action != 'synchronize' && contains(github.event.pull_request.labels.*.name, 'migration-edit-approved') && '1' || '0' }}
+        run: |
+          set -euo pipefail
+
+          # `status` here is computed against the merge base, which is what
+          # makes "was this file already on the base branch?" answerable
+          # without a hardcoded version floor. A floor would already be stale:
+          # CLAUDE.md still says "V1-V6 are applied" and V7-V9 shipped since.
+          gh api "repos/$REPO/pulls/$PR/files" --paginate \
+            --jq '.[] | [.status, .filename, (.previous_filename // "")] | @tsv' \
+            > pr-files.tsv
+
+          echo "Changed files in this PR: $(wc -l < pr-files.tsv)"
+
+          # Exit code 2 means the classifier itself is broken; never let that
+          # read as a clean result.
+          if ! bash scripts/check-migration-changes.sh < pr-files.tsv > gate-out.txt; then
+            echo "::error::check-migration-changes.sh failed -- treating as BROKEN, not clean."
+            cat gate-out.txt || true
+            exit 1
+          fi
+
+          # sed rather than head: `head -1` can exit while the writer is still
+          # going, and pipefail then turns that SIGPIPE into a false failure.
+          # That exact trap is documented in CLAUDE.md.
+          VERDICT="$(sed -n '1p' gate-out.txt | cut -d= -f2)"
+          sed '1d' gate-out.txt > gate-body.md
+
+          echo "VERDICT=$VERDICT" >> "$GITHUB_ENV"
+          echo "Verdict: $VERDICT"
+
+          # The summary is written unconditionally, so the signal survives even
+          # when commenting is impossible (fork PRs get a read-only token).
+          if [ -s gate-body.md ]; then
+            cat gate-body.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '### No migration changes in this PR' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Label and comment
+        # Fork PRs get a read-only GITHUB_TOKEN no matter what `permissions:`
+        # says, so labelling would 403. Skipped rather than failed: the verdict
+        # still reaches the job summary, and the blocking step below still runs.
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          EVENT_ACTION: ${{ github.event.action }}
+          MARKER: "<!-- bottlevault-migration-gate -->"
+        run: |
+          set -euo pipefail
+
+          # Idempotent, and it makes a downstream fork of this project
+          # self-provisioning: its own first migration PR creates both labels
+          # without anyone doing it by hand. Note this is about a fork running
+          # its own PRs, not about a fork PR opened against this repo -- that
+          # case never reaches here, per the guard above.
+          # migration-edit-approved has to exist before a human can apply it,
+          # so it is created even while unused.
+          gh label create requires-backup --repo "$REPO" --force --color B60205 \
+            --description "Adds a DB migration - snapshot before deploying (DEPLOY.md 4/5)"
+          gh label create migration-edit-approved --repo "$REPO" --force --color FBCA04 \
+            --description "Reviewed: edits a migration that is on main but not yet deployed"
+
+          has_label() {
+            # Capture first, then match against a herestring. `gh ... | grep -q`
+            # lets grep exit on the first match while gh is still writing; gh
+            # then dies with SIGPIPE (141) and `pipefail` propagates that as a
+            # false negative. Reproduced, not theorised, and it is the same trap
+            # CLAUDE.md documents for `head -5 | grep -q`.
+            local labels
+            labels="$(gh pr view "$PR" --repo "$REPO" --json labels --jq '.labels[].name')"
+            grep -qx "$1" <<< "$labels"
+          }
+
+          # Take the stale override off, so the PR does not display an
+          # approval that no longer applies to what it now contains. Removing a
+          # label with GITHUB_TOKEN does not retrigger the workflow, so this
+          # cannot loop. Re-applying it fires `labeled`, which is not
+          # `synchronize`, so the override takes effect again on a fresh look.
+          if [ "$EVENT_ACTION" = "synchronize" ] && has_label migration-edit-approved; then
+            gh pr edit "$PR" --repo "$REPO" --remove-label migration-edit-approved
+            echo "Dismissed migration-edit-approved: new commits were pushed."
+          fi
+
+          if [ "$VERDICT" = "clean" ]; then
+            # A migration may have been dropped by a later push. Take the label
+            # back off rather than leaving a stale one behind.
+            if has_label requires-backup; then
+              gh pr edit "$PR" --repo "$REPO" --remove-label requires-backup
+              echo "Removed stale requires-backup label."
+            fi
+          else
+            if ! has_label requires-backup; then
+              gh pr edit "$PR" --repo "$REPO" --add-label requires-backup
+            fi
+          fi
+
+          # Upsert on the marker rather than posting per push, so a PR with ten
+          # pushes does not collect ten identical comments.
+          #
+          # `sed -n 1p` is load-bearing. With --paginate, gh applies --jq to
+          # each page separately and concatenates the results, so `first`
+          # yields one id PER PAGE, not one overall -- verified against this
+          # repo's own label endpoint, which returned three values where one
+          # was expected. Two marker-bearing comments on different pages would
+          # then build a PATCH URL containing a newline and fail the step, and
+          # GitHub's "Quote reply" makes that reachable: the marker is an
+          # invisible HTML comment, so quoting the gate's own comment silently
+          # copies it. `--slurp` would be the tidy fix, but gh rejects it
+          # alongside --jq ("not supported with --jq or --template"). sed reads
+          # to EOF rather than exiting early, so unlike `head -1` it cannot
+          # SIGPIPE gh and trip pipefail.
+          COMMENT_ID="$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq '[.[] | select(.body | contains(env.MARKER)) | .id] | first // empty' \
+            | sed -n '1p')"
+
+          if [ ! -s gate-body.md ]; then
+            if [ -n "$COMMENT_ID" ]; then
+              {
+                printf '%s\n\n' "$MARKER"
+                printf '### No migration changes\n\n'
+                printf 'This PR no longer touches a migration; the earlier warning here no longer applies.\n'
+              } > gate-body.md
+              gh api -X PATCH "repos/$REPO/issues/comments/$COMMENT_ID" -F body=@gate-body.md >/dev/null
+              echo "Updated existing comment to note the warning no longer applies."
+            else
+              echo "Nothing to say and no existing comment. Done."
+            fi
+            exit 0
+          fi
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$COMMENT_ID" -F body=@gate-body.md >/dev/null
+            echo "Updated comment $COMMENT_ID."
+          else
+            gh pr comment "$PR" --repo "$REPO" --body-file gate-body.md
+            echo "Posted a new comment."
+          fi
+
+      - name: Block on an immutable-migration change
+        # Deliberately the last step, so the PR is labelled and commented before
+        # the job goes red -- the explanation should already be on the PR by the
+        # time anyone clicks through to the failure.
+        run: |
+          set -euo pipefail
+          case "$VERDICT" in
+            violation)
+              echo "::error::This PR changes a migration that already exists on main. Flyway validates checksums on startup and the API will not boot. Add a new forward-only migration instead, or apply the migration-edit-approved label if it is on main but not yet deployed."
+              exit 1
+              ;;
+            backup)
+              echo "::notice::This PR adds a database migration. Back up before deploying - see DEPLOY.md sections 4 and 5."
+              ;;
+            clean)
+              echo "No migration changes."
+              ;;
+            *)
+              echo "::error::Unrecognized verdict '$VERDICT'."
+              exit 1
+              ;;
+          esac
