@@ -38,17 +38,58 @@ From a checkout of the commit range you're about to deploy:
 ```bash
 # Does this update include a database migration? If this prints anything,
 # you are in a ⚠️ / 🛑 row — back up before deploying.
-git diff --name-only <deployed-sha>..<new-sha> -- backend/src/main/resources/db/migration/
+#
+# Both paths matter. The SQL migrations live under resources/, but a Flyway
+# JVM migration (V8) is Kotlin under kotlin/db/migration/, and checking only
+# the first path misses it silently.
+git diff --name-only <deployed-sha>..<new-sha> --   backend/src/main/resources/db/migration/   backend/src/main/kotlin/db/migration/
 
 # Which parts changed at all?
 git diff --stat <deployed-sha>..<new-sha>
 ```
 
-A migration file under `backend/src/main/resources/db/migration/` is the single
-signal that a backup is required. Whether it's "additive" or "destructive" is a
+A migration file under **either** of those directories is the single signal
+that a backup is required. Whether it's "additive" or "destructive" is a
 judgement call — read the SQL: `CREATE TABLE`/`ADD COLUMN`/`CREATE INDEX` is
 additive; `DROP`, `ALTER ... TYPE`, `RENAME`, or any `UPDATE`/`DELETE` backfill
 is destructive and needs the full-care path.
+
+### The CI gate answers this before the deploy
+
+[`.github/workflows/migration-gate.yml`](.github/workflows/migration-gate.yml)
+runs the same classification on every PR, so the question gets asked while the
+PR is open rather than while the deploy is running. It separates two cases that
+are **not** the same severity:
+
+| What the PR does | Gate response | Why |
+|---|---|---|
+| **Adds** a migration | Labels it `requires-backup`, comments §4/§5, check stays **green** | Forgetting a backup costs you the rollback, not the deploy. Advisory. |
+| **Edits, deletes, or renames** a migration already on `main` | Check goes **red** | Flyway checksums applied migrations and validates at startup. The API will not boot, and `flyway repair` is forbidden here. A label cannot stop a merge; this needs to. |
+
+The rule for "already on `main`" is the PR's own diff status against the merge
+base, not a hardcoded version floor. A floor rots — this file and CLAUDE.md both
+said "V1-V6 are applied" while V7-V9 were live.
+
+One asymmetry is deliberate and counterintuitive. `BaseJavaMigration.getChecksum()`
+returns null unless overridden, so Flyway does **not** checksum a Kotlin
+migration's content: editing V8 is safe where editing an applied `.sql` file is
+not, which is also why V8 can carry an SPDX header and the applied `.sql`
+migrations cannot. Deleting or renaming V8 still breaks validation, so that
+case still blocks.
+
+There is a real window where editing a migration is safe — it is on `main` but
+not yet deployed, since CI publishes `:latest` on merge while deploys are
+manual. Rather than try to detect that, the gate blocks by default and takes an
+explicit override: apply the `migration-edit-approved` label and the check
+re-runs and goes green, with the override recorded in its PR comment.
+
+The classifier is [`scripts/check-migration-changes.sh`](scripts/check-migration-changes.sh),
+which reads a PR's file list on stdin, so you can run it by hand against any PR
+without waiting for CI:
+
+```bash
+gh api "repos/toastedcoffee/BottleVault/pulls/<n>/files" --paginate   --jq '.[] | [.status, .filename, (.previous_filename // "")] | @tsv'   | bash scripts/check-migration-changes.sh
+```
 
 ### Does this release need a maintenance window?
 
@@ -329,7 +370,7 @@ migration has since run — restore the matching data snapshot too.
 | DB data (host) | `<stack>/data/postgres` |
 | Uploads (host) | `<stack>/data/uploads` |
 | Web logs (host) | `<stack>/data/logs/nginx` |
-| Migrations (repo) | `backend/src/main/resources/db/migration/V*.sql` |
+| Migrations (repo) | `backend/src/main/resources/db/migration/V*.sql` and `backend/src/main/kotlin/db/migration/V*.kt` (Flyway JVM migrations) |
 | Stack dir (TrueNAS) | `/mnt/<pool>/configs/stacks/bottlevault` |
 
 ---
@@ -495,8 +536,5 @@ docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT disp
 
 ## 8. Future hardening (not yet built)
 
-- **CI gate:** a job that detects a new `backend/src/main/resources/db/migration/V*.sql`
-  in a PR diff and labels it `requires-backup` + comments this runbook's §4/§5,
-  so the backup step can't be forgotten.
 - **Zero-downtime:** two `web` replicas or a blue/green swap behind the tunnel,
   removing the recreate blip on ✅ updates.

@@ -201,8 +201,14 @@ Trademark terms live in `TRADEMARKS.md` and are **not** covered by the AGPL.
 The Flyway rule comes first, because getting it wrong takes prod down:
 **never add an SPDX header to a migration that has already been applied to a
 live database.** Flyway checksums whole file content, so a header changes the
-checksum, fails validation on the next startup, and takes the API down. `V1`-`V6`
-are applied. **Never run `flyway repair`.** New migrations get their header
+checksum, fails validation on the next startup, and takes the API down.
+**Treat every migration already on `main` as applied.** That invariant does not
+rot, where a hand-kept list does: this line read "`V1`-`V6` are applied" straight
+through the deploy of V7-V9. `.github/workflows/migration-gate.yml` now enforces
+it from the PR diff, failing any PR that edits, deletes, or renames a migration
+that exists on `main`; `migration-edit-approved` is the deliberate override for
+the real case where it is on `main` but not yet deployed.
+**Never run `flyway repair`.** New migrations get their header
 *before* they are first applied — and migrations stay out of the sweep script by
 an explicit `EXCLUDE_RE` gate, not merely by omission from `INCLUDE_RE`.
 
