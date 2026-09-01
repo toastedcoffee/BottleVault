@@ -222,12 +222,23 @@ validation, and **the API will not boot** until the file is put back.
 time.
 
 EOF
-else
+elif [ "$verdict" = "backup" ]; then
   cat <<EOF
 ### ⚠️ This PR adds a database migration — back up before deploying
 
 A new file under a migration directory is the single signal that a backup is
 required. Merging is fine; deploying without a snapshot is not.
+
+EOF
+else
+  # verdict=clean, reached only because a Kotlin migration was edited. Nothing
+  # was added, so none of the backup copy above applies -- saying it would
+  # anyway is how a gate teaches people to ignore it.
+  cat <<EOF
+### Kotlin migration edited — no backup required
+
+Nothing here needs a snapshot and nothing will fail validation. Flagged only
+because it is easy to assume otherwise.
 
 EOF
 fi
@@ -275,7 +286,7 @@ been deployed yet — apply the \`$OVERRIDE_LABEL\` label to record that
 judgement. The check re-runs on label changes and will go green, and the
 override stays visible in this comment.
 EOF
-else
+elif [ "$verdict" = "backup" ]; then
   cat <<EOF
 **Before deploying:** back up first ([DEPLOY.md]($RUNBOOK_BASE) §4 — the ZFS
 snapshot is the primary method; it captures the database *and* uploads

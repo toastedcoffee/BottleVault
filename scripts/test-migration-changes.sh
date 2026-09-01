@@ -13,10 +13,13 @@
 # Records are built with printf '%s\t%s\t%s' rather than literal tabs, so an
 # editor that helpfully converts tabs to spaces cannot quietly break the suite.
 #
-# Every assertion here was mutation-verified when written: breaking the Kotlin
-# path pattern, treating a Kotlin edit as checksummed, judging renames on the
-# new path instead of the old one, narrowing `.+` to `[^/]+`, and ignoring the
-# `removed` status each turn a distinct test red.
+# The assertions here were mutation-verified when written, not just observed
+# green. Each of these deliberate breakages turns at least one test red:
+# dropping the Kotlin path from the added-file match, treating a Kotlin edit as
+# checksummed, judging renames on the new path instead of the old one,
+# narrowing `.+` to `[^/]+` so subdirectories stop matching, ignoring the
+# `removed` status, ignoring the override label, removing either exit-2 guard,
+# and reverting the clean-vs-backup split in the report copy.
 #
 # Usage:  bash scripts/test-migration-changes.sh
 # Exit:   0 all assertions passed, 1 one or more failed
@@ -81,6 +84,17 @@ body() {
   fi
 }
 
+# nobody <name> <needle that must be ABSENT> <input> [override]
+nobody() {
+  local name="$1" needle="$2" input="$3" override="${4:-0}" out
+  out="$(run_sut "$override" "$input")"
+  if printf '%s' "$out" | grep -qF -- "$needle"; then
+    fail=$((fail + 1)); printf '  FAIL  %s -- report wrongly contains %s\n' "$name" "$needle"
+  else
+    pass=$((pass + 1)); printf '  ok    %s\n' "$name"
+  fi
+}
+
 echo "verdicts"
 want "empty input"                clean     ""
 want "no migration files"         clean     "$(rec modified backend/src/main/kotlin/com/bottlevault/App.kt)"
@@ -120,6 +134,18 @@ body "names the fatal case"       "this is the fatal one"    "$(rec modified "$S
 body "offers the override label"  "migration-edit-approved"  "$(rec modified "$SQLDIR/V1__initial_schema.sql")"
 body "points at the runbook"      "§5"                       "$(rec added "$SQLDIR/V10__x.sql")"
 body "explains the Kotlin case"   "V8__backfill"             "$(rec modified "$KTDIR/V8__backfill_normalized_names.kt")"
+
+# A clean verdict still emits a report when a Kotlin migration was edited, and
+# that report must not borrow the backup-required copy. Getting this wrong made
+# the gate tell a maintainer to snapshot the database for a change that needs no
+# snapshot, while simultaneously removing the requires-backup label -- a gate
+# that cries wolf is a gate people learn to ignore.
+nobody "kt-only never claims an add"   "adds a database migration" \
+                                       "$(rec modified "$KTDIR/V8__backfill_normalized_names.kt")"
+nobody "kt-only never demands backup"  "**Before deploying:**" \
+                                       "$(rec modified "$KTDIR/V8__backfill_normalized_names.kt")"
+body   "kt-only says no backup needed" "no backup required" \
+                                       "$(rec modified "$KTDIR/V8__backfill_normalized_names.kt")"
 
 echo
 echo "passed=$pass failed=$fail"

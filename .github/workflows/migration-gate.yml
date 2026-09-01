@@ -143,8 +143,22 @@ jobs:
 
           # Upsert on the marker rather than posting per push, so a PR with ten
           # pushes does not collect ten identical comments.
+          #
+          # `sed -n 1p` is load-bearing. With --paginate, gh applies --jq to
+          # each page separately and concatenates the results, so `first`
+          # yields one id PER PAGE, not one overall -- verified against this
+          # repo's own label endpoint, which returned three values where one
+          # was expected. Two marker-bearing comments on different pages would
+          # then build a PATCH URL containing a newline and fail the step, and
+          # GitHub's "Quote reply" makes that reachable: the marker is an
+          # invisible HTML comment, so quoting the gate's own comment silently
+          # copies it. `--slurp` would be the tidy fix, but gh rejects it
+          # alongside --jq ("not supported with --jq or --template"). sed reads
+          # to EOF rather than exiting early, so unlike `head -1` it cannot
+          # SIGPIPE gh and trip pipefail.
           COMMENT_ID="$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-            --jq '[.[] | select(.body | contains(env.MARKER)) | .id] | first // empty')"
+            --jq '[.[] | select(.body | contains(env.MARKER)) | .id] | first // empty' \
+            | sed -n '1p')"
 
           if [ ! -s gate-body.md ]; then
             if [ -n "$COMMENT_ID" ]; then
