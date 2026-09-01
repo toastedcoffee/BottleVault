@@ -210,6 +210,10 @@ deployed, remove the label and add a new migration instead: Flyway will refuse
 to boot on the checksum mismatch, and \`flyway repair\` is forbidden in this
 repo.
 
+The override covers **this diff only**. Pushing another commit dismisses it and
+removes the label, so anything added later has to be looked at on its own merits
+rather than inheriting this approval.
+
 EOF
 elif [ "$verdict" = "violation" ]; then
   cat <<EOF
@@ -284,7 +288,8 @@ if [ "$verdict" = "violation" ]; then
 **If it is genuinely safe** — the migration is on the base branch but has not
 been deployed yet — apply the \`$OVERRIDE_LABEL\` label to record that
 judgement. The check re-runs on label changes and will go green, and the
-override stays visible in this comment.
+override stays visible in this comment. It applies to the diff you approved:
+a later push dismisses it and takes the label back off.
 EOF
 elif [ "$verdict" = "backup" ]; then
   cat <<EOF

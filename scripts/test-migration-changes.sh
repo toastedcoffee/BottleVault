@@ -123,6 +123,11 @@ want "downgrades a violation"     backup    "$(rec modified "$SQLDIR/V1__initial
 want "no effect on an add"        backup    "$(rec added "$SQLDIR/V10__x.sql")" 1
 body "leaves a trace in the body" "Migration edit approved by label" \
                                             "$(rec modified "$SQLDIR/V1__initial_schema.sql")" 1
+# The override is dismissed by the next push (the workflow drops the label on a
+# `synchronize` event). The comment has to say so, or a maintainer reasonably
+# reads a green check as covering whatever the PR contains now.
+body "says the override is per-diff" "Pushing another commit dismisses it" \
+                                            "$(rec modified "$SQLDIR/V1__initial_schema.sql")" 1
 
 echo "broken input is loud, not clean"
 want "unrecognized status"        EXIT2     "$(rec exploded "$SQLDIR/V1__initial_schema.sql")"
