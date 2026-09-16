@@ -91,10 +91,12 @@ services:
       # nginx forwards the Host header with its port intact, so the backend sees
       # those requests as same-origin.
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
-      UPLOADS_DIR: /app/uploads
+      # Must match the container side of the uploads volume below — change both
+      # together, or photos are written to the container and lost on recreate.
+      UPLOADS_DIR: /data/uploads
     # Bottle photos live on the host so ZFS snapshots back them up alongside the DB.
     volumes:
-      - ${UPLOADS_PATH:-./data/uploads}:/app/uploads
+      - ${UPLOADS_PATH:-./data/uploads}:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy

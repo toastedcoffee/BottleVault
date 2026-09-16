@@ -66,7 +66,9 @@ app:
       api-key: ${BARCODE_LOOKUP_API_KEY:}
   uploads:
     # Directory where bottle images are stored. Mounted as a volume in docker-compose.
-    dir: ${UPLOADS_DIR:/app/uploads}
+    # Deliberately outside the image's WORKDIR (/app): user data must not hang off
+    # the jar's location. Must match the container side of the uploads volume.
+    dir: ${UPLOADS_DIR:/data/uploads}
 
 management:
   endpoints:
