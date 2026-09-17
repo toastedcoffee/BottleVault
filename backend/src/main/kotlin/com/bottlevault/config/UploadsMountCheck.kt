@@ -30,13 +30,23 @@ object UploadsMount {
      * reason. That mount counts as persistent only if its device differs from
      * the device behind `/`: a mount whose device is the image's own overlay is
      * as ephemeral as no mount at all, wherever it is attached.
+     *
+     * The device comparison assumes `/` is an overlay, which holds for every
+     * normal Docker storage driver. Under `vfs` (or a rootless/nested daemon
+     * without overlayfs) `/` reports a real block device, and a bind mount from
+     * that same disk shares its major:minor — so a working mount reads as
+     * ephemeral and the caller logs a warning about a non-problem. That is the
+     * tolerable direction for a purely advisory check: it over-warns rather
+     * than staying silent while photos are being written to a container that is
+     * about to be recreated.
      */
     fun isPersistent(uploadsPath: String, mountinfoLines: List<String>): Boolean {
         val target = components(uploadsPath)
         val mounts = mountinfoLines.mapNotNull(::parseMount)
         val rootDevice = mounts.lastOrNull { it.point.isEmpty() }?.device
         val covering = mounts.filter { target.isUnder(it.point) }
-        // maxByOrNull keeps the first maximum; the last one is the effective mount.
+        // Not maxByOrNull: it keeps the first maximum, and on a tie the *last*
+        // line is the mount actually in effect.
         val deepest = covering.lastOrNull { m -> covering.none { it.point.size > m.point.size } }
             ?: return false
         return deepest.point.isNotEmpty() && deepest.device != rootDevice
