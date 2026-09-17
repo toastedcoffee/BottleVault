@@ -134,6 +134,29 @@ casualty: `docker run ... cat /usr/share/doc/bottlevault/LICENSE` reaches Docker
 as a `C:\...` path and fails with a confusing "not found". Prefix any command
 carrying an in-container path with `MSYS_NO_PATHCONV=1`.
 
+The mirror-image trap costs the same time: programs that are **native Windows
+builds** do not understand the `/c/...` paths Git Bash prints, and MSYS does not
+rewrite a path that arrives inside a larger argument or through a variable. Two
+that bit during the uploads-path work, both failing in ways that never name the
+path as the problem:
+- `curl -F "file=@/c/Users/.../x.png"` -- Git Bash's own `/mingw64/bin/curl` is
+  a native build, so the upload dies before any request leaves and
+  `%{http_code}` reports `000`, which reads like a connection failure rather
+  than a missing file.
+- `python -c "open('/c/Users/.../x.png','wb')"` -- `FileNotFoundError` on a
+  directory that plainly exists.
+
+Both get worse in a multi-step script, because **a leading `set -e` does not
+stop the run here**: a failing step is followed by the rest of the script
+anyway, so a later `cmp` or upload silently uses a stale file from an earlier
+step and the real error scrolls past. Verified directly -- a failing command
+followed by `echo` still reaches the `echo`. Check each step's own output
+rather than trusting the script to have halted.
+
+Give those a native `C:\Users\...` path -- a second shell variable holding the
+Windows spelling is the least error-prone form -- and keep the `/c/...` spelling
+for the shell's own builtins and for `ls`/`cmp`.
+
 ## Deployment model (TrueNAS / Dockge)
 
 Prod runs from `docker-compose.prod.yml` pasted into Dockge — there is **no git
