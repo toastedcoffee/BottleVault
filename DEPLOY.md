@@ -156,7 +156,9 @@ Nothing user-facing is stored inside a container. Per
 - **Database** → host bind mount `./data/postgres`
   (on TrueNAS: `/mnt/<pool>/configs/stacks/bottlevault/data/postgres`)
 - **Bottle photos** → host bind mount `./data/uploads`
-  (on TrueNAS: `/mnt/<pool>/configs/stacks/bottlevault/data/uploads`)
+  (on TrueNAS: `/mnt/<pool>/configs/stacks/bottlevault/data/uploads`),
+  mounted inside the `api` container at `/data/uploads` — see §7c if your stack
+  still says `/app/uploads`
 - **Web request logs** → host bind mount `./data/logs/nginx`
   (on TrueNAS: `/mnt/<pool>/configs/stacks/bottlevault/data/logs/nginx`)
 - **Sessions** are stateless JWTs validated by the backend — restarting
@@ -369,6 +371,7 @@ migration has since run — restore the matching data snapshot too.
 | Tunnel container | `bottlevault-tunnel` |
 | DB data (host) | `<stack>/data/postgres` |
 | Uploads (host) | `<stack>/data/uploads` |
+| Uploads (container) | `/data/uploads` (was `/app/uploads` before §7c) |
 | Web logs (host) | `<stack>/data/logs/nginx` |
 | Migrations (repo) | `backend/src/main/resources/db/migration/V*.sql` and `backend/src/main/kotlin/db/migration/V*.kt` (Flyway JVM migrations) |
 | Stack dir (TrueNAS) | `/mnt/<pool>/configs/stacks/bottlevault` |
@@ -531,6 +534,50 @@ Confirm it landed on the row you meant:
 ```bash
 docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT display_name, aliases, normalized_aliases FROM brands WHERE normalized_name = 'hibiki';"
 ```
+
+---
+
+## 7c. Moving the uploads path (`/app/uploads` → `/data/uploads`)
+
+Bottle photos used to be mounted inside the `api` container at `/app/uploads`,
+under the image's `WORKDIR`. They now live at `/data/uploads`, so user data no
+longer hangs off the directory that happens to hold the jar.
+
+**This is a ✅ "Compose / env-var change only" update.** Two lines in the Dockge
+stack change; nothing moves on disk. The host path is untouched
+(`<stack>/data/uploads`), so **no backup, no `docker cp`, and no copying of
+photos is required** — only the container-side name changes, and the files come
+along with the mount.
+
+Pulling the new image on its own is safe: the stack sets `UPLOADS_DIR`
+explicitly, so an un-edited stack keeps using `/app/uploads` and keeps working.
+What must never happen is changing one of the two lines without the other.
+
+In the Dockge stack editor, under `services: backend:`:
+
+```yaml
+      UPLOADS_DIR: /data/uploads      # was /app/uploads
+    volumes:
+      - ${UPLOADS_PATH:-./data/uploads}:/data/uploads   # was :/app/uploads
+```
+
+Redeploy, then verify:
+
+1. Open a bottle that already had a photo — the image still loads. (A 404 here
+   means the two lines disagree; recheck them.)
+2. Upload a new photo, then confirm it landed on the host, not inside the
+   container:
+   ```bash
+   ls -lt /mnt/<pool>/configs/stacks/bottlevault/data/uploads/bottles/*/ | head
+   ```
+3. Check the API log for the mount warning:
+   ```bash
+   docker logs bottlevault-api 2>&1 | grep -i "NOT on a mounted volume"
+   ```
+   Silence is the pass. If it fires, the backend is writing photos into the
+   container and they will be lost on the next recreate — fix the two lines
+   above before uploading anything else. The same warning appears if the uploads
+   volume is missing entirely, which is what this stack ran with once before.
 
 ---
 
