@@ -135,8 +135,9 @@ as a `C:\...` path and fails with a confusing "not found". Prefix any command
 carrying an in-container path with `MSYS_NO_PATHCONV=1`.
 
 The mirror-image trap costs the same time: programs that are **native Windows
-builds** do not understand the `/c/...` paths Git Bash prints, and MSYS does not
-rewrite a path that arrives inside a larger argument or through a variable. Two
+builds** do not understand the `/c/...` paths Git Bash prints, and conversion is
+not guaranteed to reach a path buried inside a larger argument (it is reliable
+for a bare path argument; do not assume beyond what you have seen fail). Two
 that bit during the uploads-path work, both failing in ways that never name the
 path as the problem:
 - `curl -F "file=@/c/Users/.../x.png"` -- Git Bash's own `/mingw64/bin/curl` is
