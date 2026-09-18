@@ -118,22 +118,6 @@ Two caps must stay aligned, or nginx 413s a request the backend would accept:
 - `frontend/nginx.conf` → `client_max_body_size` on `/api/` (proxy cap, keep
   ~1 MB above backend cap for multipart overhead)
 
-## Windows / shell conventions
-
-Prefer the Bash tool (Git Bash) for git/npm/gradle commands — it takes normal
-POSIX quoting. Reach for the PowerShell tool only when a command needs it
-specifically (native Windows services, registry, etc.), and avoid nested or
-nakedly-escaped quotes there (e.g. `ssh-keygen -N '""'`, `sc create ... binPath=
-"..."`) — PowerShell's quote mangling has silently produced wrong values (like
-a passphrase-protected key) more than once. When in doubt, write the value to
-a temp file or use a here-string instead of inline escaping.
-
-Git Bash also rewrites Unix-looking arguments into Windows paths before handing
-them to a native program (MSYS path conversion). Container paths are the usual
-casualty: `docker run ... cat /usr/share/doc/bottlevault/LICENSE` reaches Docker
-as a `C:\...` path and fails with a confusing "not found". Prefix any command
-carrying an in-container path with `MSYS_NO_PATHCONV=1`.
-
 ## Deployment model (TrueNAS / Dockge)
 
 Prod runs from `docker-compose.prod.yml` pasted into Dockge — there is **no git
