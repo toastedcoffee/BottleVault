@@ -53,14 +53,18 @@ gateway_of() { docker network inspect -f '{{range .IPAM.Config}}{{if .Gateway}}{
 host_ip() { ip -4 route get "$PUBLIC_IP" | awk '{for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit }}'; }
 chains_v4() { for c in BV-GUARD BV-GUARD-IN BV-LOG-DROP; do iptables -w -S "$c" 2>/dev/null; done; }
 docker_chains_v4() { for c in DOCKER DOCKER-ISOLATION-STAGE-1 DOCKER-ISOLATION-STAGE-2; do iptables -w -S "$c" 2>/dev/null; done; }
-# Everything the guard owns or touches, both families, jumps included.
+# Everything the guard owns or touches, both families, jumps and scratch chains
+# included (a leaked *-NEW chain is a change too).
 guard_state() {
   local t c
   for t in iptables ip6tables; do
     command -v "$t" >/dev/null || continue
-    for c in DOCKER-USER FORWARD INPUT BV-GUARD BV-GUARD-IN BV-LOG-DROP; do "$t" -w -S "$c" 2>/dev/null; done
+    for c in DOCKER-USER FORWARD INPUT BV-GUARD BV-GUARD-IN BV-LOG-DROP BV-GUARD-NEW BV-GUARD-IN-NEW BV-LOG-DROP-NEW; do
+      "$t" -w -S "$c" 2>/dev/null
+    done
   done
 }
+LOCK=/run/bv-egress-guard.lock
 
 # --- fault injection -------------------------------------------------------
 # A shim directory placed first in PATH for ONE guard invocation replaces a
@@ -110,7 +114,8 @@ HOST_LISTENER_PID=""
 cleanup() {
   [ -n "$LOCK_HOLDER_PID" ] && kill "$LOCK_HOLDER_PID" >/dev/null 2>&1 || true
   guard remove >/dev/null 2>&1 || true
-  docker rm -f bvt-int bvt-int-peer bvt-egress bvt-tunnel bvt-legacy bvt-v6 bvt-neighbor bvt-mount bvt-mount-file bvt-lan bvt-lan-probe >/dev/null 2>&1 || true
+  docker rm -f bvt-int bvt-int-peer bvt-egress bvt-tunnel bvt-legacy bvt-v6 bvt-neighbor bvt-mount bvt-mount-file bvt-mount-vol bvt-lan bvt-lan-probe >/dev/null 2>&1 || true
+  docker volume rm bvt-vol-dir bvt-vol-parent >/dev/null 2>&1 || true
   for n in bvtest_internal bvtest_egress_out bvtest_tunnel_out bvtest_legacy bvtest_lan bvtest_v6 bvtest_neighbor; do
     docker network rm "$n" >/dev/null 2>&1 || true
   done
@@ -246,6 +251,10 @@ check_is 1 "jump not first"
 guard apply --quiet >/dev/null
 check_is 0 "jump first again"
 iptables -w -D DOCKER-USER -j RETURN 2>/dev/null || true
+iptables -w -A DOCKER-USER -j BV-GUARD
+check_is 1 "jump duplicated"
+guard apply --quiet >/dev/null
+check_is 0 "duplicate jump removed"
 
 # --- fail closed on tool errors -------------------------------------------------------
 # A firewall that meets an error must exit 2 and leave the rules it already has,
@@ -281,21 +290,62 @@ fill_fault scratch BV-GUARD-NEW
 expect_fail_closed "check, scratch fill fails" scratch check
 expect_fail_closed "apply, scratch fill fails" scratch apply
 
+# Jump repair whose insert fails must not leave the jump deleted. Either way the
+# guard repairs jumps (delete then insert with iptables, or one iptables-restore
+# transaction), the shim makes the insert fail after the delete was attempted.
+iptables -w -I DOCKER-USER 1 -j RETURN
+mkdir -p "$SHIMS/jump"
+cat >"$SHIMS/jump/iptables" <<EOF
+#!/usr/bin/env bash
+if [ "\$2" = -I ] && [ "\$3" = DOCKER-USER ]; then echo "shim: injected iptables failure" >&2; exit 1; fi
+exec $REAL_IPT "\$@"
+EOF
+cat >"$SHIMS/jump/iptables-restore" <<EOF
+#!/usr/bin/env bash
+awk '{ print } /^-I DOCKER-USER / { print "-A DOCKER-USER -m bvnosuchmatch -j DROP" }' | exec $REAL_IPTR "\$@"
+EOF
+chmod 755 "$SHIMS/jump/iptables" "$SHIMS/jump/iptables-restore"
+expect_fail_closed "jump repair, insert fails" jump apply
+iptables -w -D DOCKER-USER -j RETURN 2>/dev/null || true
+check_is 0 "jump intact after the failed repair"
+guard apply --quiet >/dev/null   # keep later blocks independent of this one's outcome
+
 # Concurrent runs share the scratch chains, so a second run waits for the lock
 # and then gives up with exit 2 rather than racing the first.
 # exec: the holder's PID is the process that holds the lock, so kill releases it.
-( exec 9>>/run/bv-egress-guard.lock && flock 9 && exec sleep 90 ) &
+( exec 9>>"$LOCK" && flock 9 && exec sleep 90 ) &
 LOCK_HOLDER_PID=$!
 sleep 1
 start=$SECONDS
 guard check >/tmp/bvshim.out 2>&1; rc=$?
-if [ "$rc" -eq 2 ] && grep -q 'lock' /tmp/bvshim.out; then
+if [ "$rc" -eq 2 ] && grep -q 'still holds the lock' /tmp/bvshim.out; then
   pass "a second run gives up on the held lock with exit 2 (after $((SECONDS - start))s)"
 else
   fail "lock: rc=$rc $(cat /tmp/bvshim.out)"
 fi
 kill "$LOCK_HOLDER_PID" >/dev/null 2>&1; wait "$LOCK_HOLDER_PID" 2>/dev/null; LOCK_HOLDER_PID=""
 check_is 0 "lock released"
+
+# Only root may hold the lock: a lock file anyone can open lets any local user
+# stall every run.
+if [ "$(stat -c '%a %U' "$LOCK")" = "600 root" ]; then pass "lock file is 600 root"; else fail "lock file is $(stat -c '%a %U' "$LOCK")"; fi
+chown 65534 "$LOCK"
+guard check >/tmp/bvshim.out 2>&1; rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'lock file' /tmp/bvshim.out; then pass "refuses a lock file not owned by root"; else fail "foreign lock owner: rc=$rc $(cat /tmp/bvshim.out)"; fi
+chown 0 "$LOCK"
+
+# The lock is taken after the Docker wait: a boot-time apply that is still
+# waiting for Docker must not block the per-minute runs.
+shim noinfo docker "$REAL_DOCKER" '[ "$1" = info ]'
+PATH="$SHIMS/noinfo:$PATH" guard apply --wait-for-docker 20 >/dev/null 2>&1 &
+waiter=$!
+sleep 2
+start=$SECONDS
+guard check >/tmp/bvshim.out 2>&1; rc=$?
+took=$((SECONDS - start))
+if [ "$rc" -eq 0 ] && [ "$took" -lt 10 ]; then pass "a run waiting for Docker does not hold the lock (check took ${took}s)"; else fail "check during a Docker wait: rc=$rc after ${took}s $(cat /tmp/bvshim.out)"; fi
+wait "$waiter"; rc=$?
+if [ "$rc" -eq 2 ]; then pass "apply gives up with exit 2 when Docker never comes up"; else fail "apply with Docker down: rc=$rc"; fi
 rm -f /tmp/bvshim.out
 
 # --- location safety ------------------------------------------------------------------
@@ -305,11 +355,15 @@ docker run -d --name bvt-mount -v /tmp/bvloc:/x:ro "$PROBE_IMAGE" sleep 3600 >/d
 BV_PROJECTS=$PROJECT bash /tmp/bvloc/egress-guard.sh check >/tmp/bvloc.out 2>&1; rc=$?
 if [ "$rc" -eq 2 ] && grep -q 'mounted into a container' /tmp/bvloc.out; then pass "refuses to run from a container-mounted directory"; else fail "location check: rc=$rc $(cat /tmp/bvloc.out)"; fi
 # If Docker cannot say what is mounted, the check must fail, not pass with nothing checked.
-shim dockerps docker "$REAL_DOCKER" '[ "$1" = ps ]'
-shim dockerinspect docker "$REAL_DOCKER" '[ "$1" = inspect ]'
-for s in dockerps dockerinspect; do
-  PATH="$SHIMS/$s:$PATH" BV_PROJECTS=$PROJECT bash /tmp/bvloc/egress-guard.sh check >/tmp/bvloc.out 2>&1; rc=$?
-  if [ "$rc" -eq 2 ]; then pass "mount check fails closed when docker ${s#docker} fails"; else fail "mount check with failing docker ${s#docker}: rc=$rc $(cat /tmp/bvloc.out)"; fi
+shim ps docker "$REAL_DOCKER" '[ "$1" = ps ]'
+shim inspect docker "$REAL_DOCKER" '[ "$1" = inspect ]'
+for s in "ps:could not list containers" "inspect:could not inspect containers"; do
+  PATH="$SHIMS/${s%%:*}:$PATH" BV_PROJECTS=$PROJECT bash /tmp/bvloc/egress-guard.sh check >/tmp/bvloc.out 2>&1; rc=$?
+  if [ "$rc" -eq 2 ] && grep -q "${s#*:}" /tmp/bvloc.out; then
+    pass "mount check fails closed when docker ${s%%:*} fails"
+  else
+    fail "mount check with failing ${s%%:*}: rc=$rc $(cat /tmp/bvloc.out)"
+  fi
 done
 docker rm -f bvt-mount >/dev/null
 # A bind mount of the script file itself is as dangerous as one of its directory.
@@ -317,6 +371,27 @@ docker run -d --name bvt-mount-file -v /tmp/bvloc/egress-guard.sh:/x.sh:ro "$PRO
 BV_PROJECTS=$PROJECT bash /tmp/bvloc/egress-guard.sh check >/tmp/bvloc.out 2>&1; rc=$?
 if [ "$rc" -eq 2 ] && grep -q 'mounted into a container' /tmp/bvloc.out; then pass "refuses to run when the script file itself is mounted"; else fail "file-mount check: rc=$rc $(cat /tmp/bvloc.out)"; fi
 docker rm -f bvt-mount-file >/dev/null
+# A named volume bound to a host path shows up in .Mounts as the volume's own
+# _data directory, not the host path, so the guard must resolve the volume.
+# expect_volume_refused VOLUME DEVICE LABEL
+expect_volume_refused() {
+  docker volume create --opt type=none --opt o=bind --opt device="$2" "$1" >/dev/null
+  docker run -d --name bvt-mount-vol -v "$1:/x:ro" "$PROBE_IMAGE" sleep 3600 >/dev/null
+  BV_PROJECTS=$PROJECT bash /tmp/bvloc/egress-guard.sh check >/tmp/bvloc.out 2>&1; rc=$?
+  if [ "$rc" -eq 2 ] && grep -q 'mounted into a container' /tmp/bvloc.out; then pass "refuses $3"; else fail "$3: rc=$rc $(cat /tmp/bvloc.out)"; fi
+}
+expect_volume_refused bvt-vol-dir /tmp/bvloc "a named volume bound to the script's directory"
+shim volinspect docker "$REAL_DOCKER" '[ "$1" = volume ] && [ "$2" = inspect ]'
+PATH="$SHIMS/volinspect:$PATH" BV_PROJECTS=$PROJECT bash /tmp/bvloc/egress-guard.sh check >/tmp/bvloc.out 2>&1; rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'could not inspect volume' /tmp/bvloc.out; then
+  pass "mount check fails closed when docker volume inspect fails"
+else
+  fail "mount check with failing volume inspect: rc=$rc $(cat /tmp/bvloc.out)"
+fi
+docker rm -f bvt-mount-vol >/dev/null
+expect_volume_refused bvt-vol-parent /tmp "a named volume bound to a parent of the script's directory"
+docker rm -f bvt-mount-vol >/dev/null
+docker volume rm bvt-vol-dir bvt-vol-parent >/dev/null
 chmod 775 /tmp/bvloc
 BV_PROJECTS=$PROJECT bash /tmp/bvloc/egress-guard.sh check >/tmp/bvloc.out 2>&1; rc=$?
 if [ "$rc" -eq 2 ] && grep -q 'writable' /tmp/bvloc.out; then pass "refuses a group-writable directory"; else fail "permission check: rc=$rc $(cat /tmp/bvloc.out)"; fi

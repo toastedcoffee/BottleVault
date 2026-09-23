@@ -90,10 +90,18 @@ iptr() {
 # a cron apply and a manual check must not overlap. Bounded wait, then give up:
 # the rules already in place stay in force. flock -n in a loop (not flock -w)
 # because BusyBox flock has no -w; util-linux (TrueNAS SCALE) has both.
+# flock works on any open fd, read-only included, so a lock file other users
+# can open would let any local user stall every run: it is root's, mode 600.
+# Callers take it after wait_for_docker, so a boot-time wait does not hold it.
 take_lock() {
-  local deadline=$((SECONDS + LOCK_WAIT))
+  local deadline=$((SECONDS + LOCK_WAIT)) old_umask
   command -v flock >/dev/null || die "flock not found (util-linux); refusing to run without a lock"
+  old_umask=$(umask)
+  umask 077
   exec 9>>"$LOCK" || die "cannot open lock file $LOCK"
+  umask "$old_umask"
+  [ "$(stat -c '%u' "$LOCK")" = 0 ] || die "lock file $LOCK is not owned by root; refusing to use it"
+  chmod 600 "$LOCK"   # also tightens a file created by an older version
   until flock -n 9; do
     [ "$SECONDS" -lt "$deadline" ] || die "another egress-guard run still holds the lock $LOCK after ${LOCK_WAIT}s; leaving the current rules alone"
     sleep 1
@@ -132,7 +140,7 @@ wait_for_docker() {
 # container could get root on the host at the next run.
 check_location() {
   if [ "${BV_GUARD_SKIP_LOCATION_CHECK:-0}" = 1 ]; then return 0; fi
-  local self dir p owner mode ids mounts src
+  local self dir p owner mode ids mounts sources vols
   self=$(readlink -f "$0")
   dir=$(dirname "$self")
   for p in "$self" "$dir"; do
@@ -146,14 +154,32 @@ check_location() {
   # Captured in the main shell: if Docker cannot say what is mounted, the check
   # fails rather than passing with nothing checked.
   ids=$(docker ps -aq) || die "could not list containers to check their mounts"
-  mounts=""
-  if [ -n "$ids" ]; then
-    # shellcheck disable=SC2086  # container IDs are hex, one per word
-    mounts=$(docker inspect --format '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' $ids) \
-      || die "could not inspect containers to check their mounts"
+  [ -n "$ids" ] || return 0
+  # One "<type>|<volume name>|<source>" line per mount.
+  # shellcheck disable=SC2086  # container IDs are hex, one per word
+  mounts=$(docker inspect --format '{{range .Mounts}}{{.Type}}|{{.Name}}|{{.Source}}{{"\n"}}{{end}}' $ids) \
+    || die "could not inspect containers to check their mounts"
+  sources=$(cut -d'|' -f3- <<<"$mounts")
+  # A named volume's Source is its own _data directory, but a volume can be a
+  # bind in disguise (local driver, o=bind, device=/any/host/path), and volume
+  # plugins take host paths as options too. So every absolute-path option of
+  # every mounted volume is checked like a bind source.
+  vols=$(awk -F'|' '$1 == "volume" && $2 != "" { print $2 }' <<<"$mounts" | sort -u)
+  if [ -n "$vols" ]; then
+    # shellcheck disable=SC2086  # volume names cannot contain whitespace
+    sources+=$'\n'$(docker volume inspect --format '{{range .Options}}{{.}}{{"\n"}}{{end}}' $vols) \
+      || die "could not inspect volume(s) $(tr '\n' ' ' <<<"$vols")to check where they point"
   fi
+  check_mount_sources "$self" "$dir" "$sources"
+}
+
+# check_mount_sources SELF DIR SOURCES: die if any line of SOURCES is SELF, or
+# is DIR or a parent of it. Lines that are not absolute paths (volume options
+# such as "bind" or "tmpfs", NFS ":/export") cannot be host paths; skip them.
+check_mount_sources() {
+  local self=$1 dir=$2 src
   while IFS= read -r src; do
-    [ -n "$src" ] || continue
+    [[ "$src" == /* ]] || continue
     src=$(readlink -f "$src" 2>/dev/null || printf '%s' "$src")
     src=${src%/}
     if [ "$src" = "$self" ]; then
@@ -162,7 +188,7 @@ check_location() {
     case "$dir/" in
       "$src"/*) die "$dir is inside $src, which is mounted into a container; a container could rewrite this root-run script" ;;
     esac
-  done <<<"$mounts"
+  done <<<"$3"
 }
 
 role_of() {
@@ -331,11 +357,20 @@ jump_is_first_and_only() {
   [ "$first" = "-A ${parent} -j ${chain}" ] && [ "$count" = 1 ]
 }
 
+# Delete every existing copy of the jump and insert one at the top in ONE
+# iptables-restore transaction, so a failed insert cannot leave the jump
+# deleted. Only copies that exist get a -D line: a -D for a missing rule would
+# fail the whole transaction. If the parent changes between the read and the
+# restore, the restore fails, nothing changes, and the next run retries.
 reconcile_jump() {
-  local fam=$1 parent=$2 chain=$3
+  local fam=$1 parent=$2 chain=$3 rules count block i
   if jump_is_first_and_only "$fam" "$parent" "$chain"; then return 0; fi
-  while ipt "$fam" -D "$parent" -j "$chain" 2>/dev/null; do :; done
-  ipt "$fam" -I "$parent" 1 -j "$chain"
+  rules=$(ipt "$fam" -S "$parent") || die "could not read IPv$fam chain $parent"
+  count=$(grep -c -- "^-A ${parent} -j ${chain}\$" <<<"$rules" || true)
+  block="*filter"$'\n'
+  for ((i = 0; i < count; i++)); do block+="-D $parent -j $chain"$'\n'; done
+  block+="-I $parent 1 -j $chain"$'\n'"COMMIT"$'\n'
+  iptr "$fam" <<<"$block" || die "IPv$fam jump $parent -> $chain could not be repaired; $parent keeps its previous rules"
   note "repaired IPv$fam jump $parent -> $chain"
   CHANGED=1
 }
@@ -343,8 +378,8 @@ reconcile_jump() {
 cmd_apply() {
   require_root
   require_tools
-  take_lock
   wait_for_docker
+  take_lock
   check_location
   load_networks
   decide_families
@@ -362,9 +397,9 @@ cmd_apply() {
 cmd_check() {
   require_root
   require_tools
-  take_lock
   WAIT=0
   wait_for_docker
+  take_lock
   check_location
   load_networks
   decide_families
