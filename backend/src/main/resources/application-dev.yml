@@ -38,5 +38,12 @@ app:
     dir: ./uploads-dev
 
 springdoc:
+  # Both flags are needed locally: api-docs now defaults to false via
+  # SWAGGER_ENABLED, and the UI is just a shell that fetches /api-docs — with
+  # only swagger-ui.enabled here the dev page loads and then fails to resolve
+  # any spec. SecurityConfig keys its permitAll off swagger-ui.enabled, so
+  # keep these two in step.
+  api-docs:
+    enabled: true
   swagger-ui:
     enabled: true
