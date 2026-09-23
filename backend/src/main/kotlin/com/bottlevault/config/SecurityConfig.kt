@@ -12,6 +12,8 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.http.HttpStatus
 import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
+import org.springframework.security.core.userdetails.UserDetailsService
+import org.springframework.security.core.userdetails.UsernameNotFoundException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.HttpStatusEntryPoint
@@ -61,6 +63,19 @@ class SecurityConfig(
 
         return http.build()
     }
+
+    // Spring Boot's UserDetailsServiceAutoConfiguration backs off once a
+    // UserDetailsService bean exists. Without this it creates an in-memory
+    // "user" and logs a generated password into the startup logs on every
+    // boot. That account was already unreachable — this chain configures
+    // neither httpBasic nor formLogin, and authentication happens purely
+    // through the JWT filter above — so the credential was noise in logs that
+    // are meant to be reviewed. Resolving nothing keeps it that way: any
+    // future form/basic entry point fails closed rather than silently
+    // accepting a generated login.
+    @Bean
+    fun userDetailsService(): UserDetailsService =
+        UserDetailsService { username -> throw UsernameNotFoundException(username) }
 
     @Bean
     fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()

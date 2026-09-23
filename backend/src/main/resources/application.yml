@@ -93,6 +93,12 @@ management:
 springdoc:
   api-docs:
     path: /api-docs
+    # Both halves of Swagger follow the one switch. Leaving this at its `true`
+    # default made SpringDoc log a "set springdoc.api-docs.enabled=false in
+    # production" warning on every boot, and served the spec even with the UI
+    # off. SecurityConfig's denyAll and nginx's 404 for these paths stay as the
+    # outer layers; this just stops the endpoint existing in the first place.
+    enabled: ${SWAGGER_ENABLED:false}
   swagger-ui:
     path: /swagger-ui.html
     enabled: ${SWAGGER_ENABLED:false}
