@@ -18,9 +18,11 @@
 #   BV_ROLE_OVERRIDES  space-separated network=role pairs
 #   BV_GUARD_SKIP_LOCATION_CHECK=1   test harness only; never on a real host
 #
-# Policy for traffic that ORIGINATES in a guarded network's subnet:
+# Policy for traffic that ENTERS THE HOST FROM a guarded network's bridge
+# (whatever source address it claims: link-local and forged ones included):
 #   replies to connections opened from outside ........ allowed
-#   traffic to the same subnet ......................... allowed
+#   IPv6 neighbour discovery to the host ............... allowed
+#   traffic to the same network ........................ allowed
 #   private and special ranges (LAN, other Docker
 #     networks, CGNAT/VPN, link-local, loopback,
 #     multicast) ....................................... logged, dropped
@@ -32,6 +34,8 @@
 #     tunnel        name ends in _tunnel_out .......... tcp 443/7844, udp 7844
 #     egress        name ends in _egress_out .......... tcp 443
 #     transitional  any other non-internal network .... allowed
+#   and anything the role allows is allowed only from the network's own
+#   subnets; a forged source is dropped
 #
 # Run as root, from a root-owned directory that is not mounted into any
 # container (the script refuses otherwise). Install: DEPLOY.md §9.
@@ -55,6 +59,7 @@ NETS_FILE=""
 FAMILIES="4"
 CHANGED=0
 DESIRED=""
+BRIDGE=""
 
 die()  { echo "egress-guard: ERROR: $*" >&2; exit 2; }
 say()  { [ "$QUIET" -eq 1 ] || echo "egress-guard: $*"; }
@@ -213,23 +218,41 @@ role_of() {
   fi
 }
 
-# Writes "name|role|subnet subnet ..." lines, sorted by name so rule order is stable.
+# bridge_name NETWORK DRIVER ID BRIDGE_OPTION: sets BRIDGE to the Linux bridge
+# carrying the network's traffic. A global, not printed, so die() stops the
+# script. Rules key on it, not on the subnet: a source address is whatever the
+# container writes (link-local, or forged with NET_RAW), the interface a packet
+# arrives on is not.
+bridge_name() {
+  local net=$1 driver=$2 id=$3 br=$4
+  [ "$driver" = bridge ] || die "network $net uses the '$driver' driver; only bridge networks can be guarded"
+  if [ -z "$br" ]; then br="br-${id:0:12}"; fi   # Docker's own naming when no name is set
+  # Rule arguments are split on spaces, and IFNAMSIZ allows 15 characters.
+  [[ "$br" =~ ^[A-Za-z0-9_.-]{1,15}$ ]] || die "network $net has an unusable bridge name '$br'"
+  # A rule for an interface that does not exist matches nothing: refuse it.
+  [ -e "/sys/class/net/$br" ] || die "bridge $br of network $net does not exist; refusing to guard nothing"
+  BRIDGE=$br
+}
+
+# Writes "name|role|bridge|subnet subnet ..." lines, sorted by name so rule order is stable.
 # Docker's answers are captured in the main shell with || die: a failed query
 # must stop the run, because an empty answer would reconcile the guard's chains
 # to empty. Zero networks from a query that succeeded is real (stack down).
 load_networks() {
   NETS_FILE=$(mktemp)
-  local project names net info internal subnets role
+  local project names net info internal driver id bropt br subnets role
   for project in $PROJECTS; do
     names=$(docker network ls --filter "label=com.docker.compose.project=${project}" --format '{{.Name}}') \
       || die "could not list the networks of project $project; leaving the current rules alone"
     names=$(sort <<<"$names")
     while IFS= read -r net; do
       [ -n "$net" ] || continue
-      info=$(docker network inspect "$net" --format '{{.Internal}}|{{range .IPAM.Config}}{{.Subnet}} {{end}}') \
+      info=$(docker network inspect "$net" --format \
+        '{{.Internal}}|{{.Driver}}|{{.Id}}|{{with index .Options "com.docker.network.bridge.name"}}{{.}}{{end}}|{{range .IPAM.Config}}{{.Subnet}} {{end}}') \
         || die "could not inspect network $net; leaving the current rules alone"
-      internal=${info%%|*}
-      subnets=${info#*|}
+      IFS='|' read -r internal driver id bropt subnets <<<"$info"
+      bridge_name "$net" "$driver" "$id" "$bropt"
+      br=$BRIDGE
       role=$(role_of "$net" "$internal")
       case "$role" in
         internal|lan|tunnel|egress|transitional) ;;
@@ -238,7 +261,7 @@ load_networks() {
       if [ "$role" = transitional ]; then
         warn "network $net has no explicit policy; allowing public destinations on any port (transitional)"
       fi
-      printf '%s|%s|%s\n' "$net" "$role" "$subnets" >>"$NETS_FILE"
+      printf '%s|%s|%s|%s\n' "$net" "$role" "$br" "$subnets" >>"$NETS_FILE"
     done <<<"$names"
   done
 }
@@ -247,7 +270,7 @@ load_networks() {
 # turn a match into "no IPv6", which would leave IPv6 unguarded.
 has_v6_subnets() {
   local subnets
-  subnets=$(cut -d'|' -f3 "$NETS_FILE") || die "could not read the network list $NETS_FILE"
+  subnets=$(cut -d'|' -f4 "$NETS_FILE") || die "could not read the network list $NETS_FILE"
   [[ "$subnets" == *:* ]]
 }
 
@@ -280,31 +303,41 @@ desired() {
     return
   fi
   if [ "$fam" = 4 ]; then special=$SPECIAL_V4; else special=$SPECIAL_V6; fi
-  while IFS='|' read -r name role subnets; do
+  # Every rule matches the bridge (-i), so no source address, link-local or
+  # forged, gets around the policy. Every network gets rules in both families,
+  # even one without a subnet in that family: its containers may still have
+  # link-local addresses, and with no subnet nothing is allowed out.
+  while IFS='|' read -r name role br subnets; do
+    echo "-i $br -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN"
+    if [ "$chain" = "$IN" ]; then
+      if [ "$fam" = 6 ]; then
+        # IPv6 needs neighbour discovery with the host (the gateway), and
+        # conntrack never marks it ESTABLISHED. Hop limit 255 means it was
+        # not routed from anywhere, as RFC 4861 requires of NS and NA.
+        echo "-i $br -p ipv6-icmp -m icmp6 --icmpv6-type neighbour-solicitation -m hl --hl-eq 255 -j RETURN"
+        echo "-i $br -p ipv6-icmp -m icmp6 --icmpv6-type neighbour-advertisement -m hl --hl-eq 255 -j RETURN"
+      fi
+      echo "-i $br -j $DROP"
+      continue
+    fi
+    echo "-i $br -o $br -j RETURN"
+    for d in $special; do echo "-i $br -d $d -j $DROP"; done
+    # The role's allowances name the network's own subnets as source, which is
+    # the anti-spoofing check; anything they do not allow ends in the drop below.
     for s in $subnets; do
       if [ "$fam" = 4 ] && [[ "$s" == *:* ]]; then continue; fi
       if [ "$fam" = 6 ] && [[ "$s" != *:* ]]; then continue; fi
-      echo "-s $s -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN"
-      if [ "$chain" = "$IN" ]; then
-        echo "-s $s -j $DROP"
-        continue
-      fi
-      echo "-s $s -d $s -j RETURN"
-      for d in $special; do echo "-s $s -d $d -j $DROP"; done
       case "$role" in
-        internal|lan) echo "-s $s -j $DROP" ;;
+        internal|lan) ;;
         tunnel)
-          echo "-s $s -p tcp -m multiport --dports 443,7844 -j RETURN"
-          echo "-s $s -p udp -m udp --dport 7844 -j RETURN"
-          echo "-s $s -j $DROP"
+          echo "-i $br -s $s -p tcp -m multiport --dports 443,7844 -j RETURN"
+          echo "-i $br -s $s -p udp -m udp --dport 7844 -j RETURN"
           ;;
-        egress)
-          echo "-s $s -p tcp -m tcp --dport 443 -j RETURN"
-          echo "-s $s -j $DROP"
-          ;;
-        transitional) ;;
+        egress) echo "-i $br -s $s -p tcp -m tcp --dport 443 -j RETURN" ;;
+        transitional) echo "-i $br -s $s -j RETURN" ;;
       esac
     done
+    echo "-i $br -j $DROP"
   done <"$NETS_FILE"
 }
 

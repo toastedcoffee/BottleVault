@@ -111,10 +111,16 @@ EOF
 }
 
 HOST_LISTENER_PID=""
+UDP_HOST_PID=""
+UDP_LAN_PID=""
 cleanup() {
   [ -n "$LOCK_HOLDER_PID" ] && kill "$LOCK_HOLDER_PID" >/dev/null 2>&1 || true
   guard remove >/dev/null 2>&1 || true
-  docker rm -f bvt-int bvt-int-peer bvt-egress bvt-tunnel bvt-legacy bvt-v6 bvt-neighbor bvt-mount bvt-mount-file bvt-mount-vol bvt-lan bvt-lan-probe >/dev/null 2>&1 || true
+  docker rm -f bvt-int bvt-int-peer bvt-egress bvt-tunnel bvt-legacy bvt-v6 bvt-neighbor bvt-mount bvt-mount-file bvt-mount-vol bvt-lan bvt-lan-probe bvt-spoof >/dev/null 2>&1 || true
+  [ -n "$UDP_HOST_PID" ] && kill "$UDP_HOST_PID" >/dev/null 2>&1 || true
+  [ -n "$UDP_LAN_PID" ] && kill "$UDP_LAN_PID" >/dev/null 2>&1 || true
+  ip netns del bvt-lanns >/dev/null 2>&1 || true   # also removes the veth pair
+  rm -f /tmp/bvudp-host.log /tmp/bvudp-lan.log
   docker volume rm bvt-vol-dir bvt-vol-parent >/dev/null 2>&1 || true
   for n in bvtest_internal bvtest_egress_out bvtest_tunnel_out bvtest_legacy bvtest_lan bvtest_v6 bvtest_neighbor; do
     docker network rm "$n" >/dev/null 2>&1 || true
@@ -152,10 +158,65 @@ docker run -d --name bvt-neighbor --network bvtest_neighbor -p "$NEIGHBOR_PORT:8
 docker run -d --name bvt-lan     --network bvtest_lan -p "$LAN_PORT:8000" "$PY_IMAGE" python -m http.server 8000 >/dev/null
 docker run -d --name bvt-lan-probe --network bvtest_lan     "$PROBE_IMAGE" sleep 3600 >/dev/null
 [ "$V6" -eq 1 ] && docker run -d --name bvt-v6 --network bvtest_v6 "$PROBE_IMAGE" sleep 3600 >/dev/null
+# Sends raw packets with a forged source address (the default NET_RAW allows it).
+docker run -d --name bvt-spoof  --network bvtest_egress_out "$PY_IMAGE" sleep 3600 >/dev/null
 
 python3 -m http.server "$HOST_PORT" --bind :: >/dev/null 2>&1 &
 HOST_LISTENER_PID=$!
+
+# Spoofing fixture. A UDP listener on the host (INPUT path), and a stand-in
+# "LAN host" in its own network namespace behind a veth pair, reached from the
+# containers through FORWARD. Each listener logs one line per datagram.
+SPOOF_SRC=10.99.99.99      # forged source: outside every guarded subnet
+LANNS_HOST=10.254.0.1
+LANNS_PEER=10.254.0.2
+UDP_PORT=18095
+udp_listener() { # ADDR LOGFILE; exec, so the background PID is python's and kill stops it
+  exec python3 -u -c '
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.bind((sys.argv[1], int(sys.argv[2])))
+while True:
+    d, a = s.recvfrom(200); print(a[0], d.decode(errors="replace"), flush=True)
+' "$1" "$UDP_PORT" >"$2" 2>&1
+}
+udp_listener 0.0.0.0 /tmp/bvudp-host.log &
+UDP_HOST_PID=$!
+ip netns add bvt-lanns
+ip link add bvt-lan0 type veth peer name bvt-lan1
+ip link set bvt-lan1 netns bvt-lanns
+ip addr add "$LANNS_HOST/24" dev bvt-lan0 && ip link set bvt-lan0 up
+ip netns exec bvt-lanns ip addr add "$LANNS_PEER/24" dev bvt-lan1
+ip netns exec bvt-lanns ip link set bvt-lan1 up
+ip netns exec bvt-lanns ip link set lo up
+ip netns exec bvt-lanns ip route add default via "$LANNS_HOST"
+ip netns exec bvt-lanns bash -c "$(declare -f udp_listener); UDP_PORT=$UDP_PORT; udp_listener 0.0.0.0 /tmp/bvudp-lan.log" &
+UDP_LAN_PID=$!
 sleep 3
+
+# send_udp CONTAINER SRC DST TAG: one UDP datagram to DST:UDP_PORT from SRC,
+# built by hand on a raw socket so SRC can be any address.
+send_udp() {
+  docker exec "$1" python3 -c '
+import socket, struct, sys
+src, dst, port, tag = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4].encode()
+udp = struct.pack("!HHHH", 40000, port, 8 + len(tag), 0) + tag
+hdr = struct.pack("!BBHHHBBH4s4s", 0x45, 0, 20 + len(udp), 1, 0, 64, 17, 0,
+                  socket.inet_aton(src), socket.inet_aton(dst))
+s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
+s.sendto(hdr + udp, (dst, 0))
+' "$2" "$3" "$UDP_PORT" "$4"
+}
+# expect_udp LOG TAG yes|no LABEL: whether a datagram tagged TAG arrived.
+expect_udp() {
+  sleep 1
+  if grep -q -- "$2" "$1"; then got=yes; else got=no; fi
+  if [ "$got" = "$3" ]; then pass "$4"; else fail "$4 (arrived: $got)"; fi
+}
+bridge_of() { # NETWORK: the Linux bridge Docker made for it
+  local o
+  o=$(docker network inspect -f '{{with index .Options "com.docker.network.bridge.name"}}{{.}}{{end}}' "$1")
+  if [ -n "$o" ]; then echo "$o"; else echo "br-$(docker network inspect -f '{{.Id}}' "$1" | cut -c1-12)"; fi
+}
 
 HOST=$(host_ip)
 NEIGHBOR_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' bvt-neighbor)
@@ -174,6 +235,20 @@ baseline bvt-legacy "$NEIGHBOR_IP" 8000
 baseline bvt-int "$GW_INT" "$HOST_PORT"
 [ "$V6" -eq 1 ] && baseline bvt-v6 "fd00:b7::1" "$HOST_PORT"
 DOCKER_BEFORE=$(docker_chains_v4)
+
+# Spoofing baseline: the stand-in LAN host is reachable at all, and whether a
+# forged source gets through before the guard (reverse-path filtering may stop
+# it on some hosts; then the post-apply spoofing checks prove nothing and skip).
+SPOOF_REAL_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' bvt-spoof)
+info "rp_filter: all=$(cat /proc/sys/net/ipv4/conf/all/rp_filter) default=$(cat /proc/sys/net/ipv4/conf/default/rp_filter)"
+send_udp bvt-spoof "$SPOOF_REAL_IP" "$LANNS_PEER" real-to-lan-before
+expect_udp /tmp/bvudp-lan.log real-to-lan-before yes "baseline: a container reaches the stand-in LAN host"
+send_udp bvt-spoof "$SPOOF_SRC" "$LANNS_PEER" spoof-to-lan-before
+send_udp bvt-spoof "$SPOOF_SRC" "$HOST" spoof-to-host-before
+sleep 1
+SPOOF_LAN_BASE=no; grep -q spoof-to-lan-before /tmp/bvudp-lan.log && SPOOF_LAN_BASE=yes
+SPOOF_HOST_BASE=no; grep -q spoof-to-host-before /tmp/bvudp-host.log && SPOOF_HOST_BASE=yes
+info "baseline: forged source reaches LAN=$SPOOF_LAN_BASE host=$SPOOF_HOST_BASE"
 
 # --- probe-isolation.sh helpers ---------------------------------------------------------
 PROBE_OUT=/tmp/bvprobe.out
@@ -218,6 +293,7 @@ done
 
 # --- apply -------------------------------------------------------------------
 if guard apply; then pass "apply exit 0"; else fail "apply failed"; fi
+guard status | sed 's/^/      | /'   # the rules under test, for the log
 
 for c in bvt-int bvt-egress bvt-tunnel bvt-legacy; do
   expect_blocked "$c" "$HOST" "$HOST_PORT"
@@ -245,12 +321,51 @@ else
   fail "expected OPEN host -> lan network's published port $LAN_PORT"
 fi
 
-if iptables -w -S BV-GUARD | grep -q -- '--dports 443,7844'; then pass "tunnel allows tcp 443,7844"; else fail "tunnel tcp rule missing"; fi
-if iptables -w -S BV-GUARD | grep -q -- '-p udp -m udp --dport 7844'; then pass "tunnel allows udp 7844"; else fail "tunnel udp rule missing"; fi
+# Captured, not piped into grep -q: under pipefail, grep -q exiting at the first
+# match can SIGPIPE iptables and turn a match into a failure.
+fwd_rules=$(iptables -w -S BV-GUARD)
+if grep -q -- '--dports 443,7844' <<<"$fwd_rules"; then pass "tunnel allows tcp 443,7844"; else fail "tunnel tcp rule missing"; fi
+if grep -q -- '-p udp -m udp --dport 7844' <<<"$fwd_rules"; then pass "tunnel allows udp 7844"; else fail "tunnel udp rule missing"; fi
+
+# Forged sources: every rule keys on the network's bridge, so a packet from a
+# guarded network is judged by where it came from, not by what it claims.
+if [ "$SPOOF_LAN_BASE" = yes ]; then
+  send_udp bvt-spoof "$SPOOF_SRC" "$LANNS_PEER" spoof-to-lan-after
+  expect_udp /tmp/bvudp-lan.log spoof-to-lan-after no "forged source cannot reach the LAN"
+else
+  info "SKIPPED forged-source LAN check: forged packets did not arrive even before apply"
+fi
+if [ "$SPOOF_HOST_BASE" = yes ]; then
+  send_udp bvt-spoof "$SPOOF_SRC" "$HOST" spoof-to-host-after
+  expect_udp /tmp/bvudp-host.log spoof-to-host-after no "forged source cannot reach the host"
+else
+  info "SKIPPED forged-source host check: forged packets did not arrive even before apply"
+fi
+send_udp bvt-spoof "$SPOOF_REAL_IP" "$LANNS_PEER" real-to-lan-after
+expect_udp /tmp/bvudp-lan.log real-to-lan-after no "real source cannot reach the LAN either"
 
 if [ "$V6" -eq 1 ]; then
-  if ip6tables -w -S BV-GUARD | grep -q 'fd00:b7::/64'; then pass "IPv6 subnet guarded"; else fail "IPv6 subnet not in ip6tables BV-GUARD"; fi
+  V6_BR=$(bridge_of bvtest_v6)
+  in6_rules=$(ip6tables -w -S BV-GUARD-IN)
+  if grep -q -- "-i $V6_BR " <<<"$in6_rules"; then pass "IPv6 bridge $V6_BR guarded"; else fail "IPv6 bridge $V6_BR not in ip6tables BV-GUARD-IN"; fi
   expect_blocked bvt-v6 "fd00:b7::1" "$HOST_PORT"
+  # Neighbour discovery must survive the guard: with both neighbour caches
+  # emptied, reaching the container needs a fresh NS/NA exchange.
+  V6_ADDR=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}' bvt-v6)
+  ip -6 neigh flush dev "$V6_BR" >/dev/null 2>&1
+  docker exec bvt-v6 ip -6 neigh flush dev eth0 >/dev/null 2>&1
+  if ping -6 -c1 -W3 "$V6_ADDR" >/dev/null 2>&1; then
+    pass "IPv6 neighbour discovery works: host reaches $V6_ADDR after a cache flush"
+  else
+    fail "host cannot reach $V6_ADDR after a neighbour-cache flush (NDP dropped)"
+  fi
+  # The bridge's link-local address is the host too.
+  V6_LL=$(ip -6 addr show dev "$V6_BR" scope link | awk '/inet6/ { sub(/\/.*/, "", $2); print $2; exit }')
+  if [ -n "$V6_LL" ]; then
+    expect_blocked bvt-v6 "$V6_LL%eth0" "$HOST_PORT"
+  else
+    fail "bridge $V6_BR has no link-local address to test"
+  fi
 else
   info "SKIPPED IPv6 checks: this Docker host cannot create IPv6 networks"
 fi
@@ -270,11 +385,10 @@ expect_probe_row bvtest_lan lan "$PUBLIC_IP:443 (public)" open blocked PASS
 expect_probe_row bvtest_legacy transitional "$HOST:$CLOSED_PORT" closed blocked "N/A (host cannot reach)"
 if grep -Eq '^N/A rows: [1-9]' "$PROBE_OUT"; then pass "probe summary counts N/A rows"; else fail "probe summary has no N/A count"; fi
 if [ "$V6" -eq 1 ]; then
-  # After apply the host's own connection to fd00:b7::1 carries that address as
-  # its source, which the guard's INPUT chain drops (seen in the lab; the IPv4
-  # equivalent is not dropped). The host cannot show the target reachable, so
-  # the row must read N/A, never PASS.
-  expect_probe_row bvtest_v6 transitional "[fd00:b7::1]:$HOST_PORT" closed blocked "N/A (host cannot reach)"
+  # The host's own connection to fd00:b7::1 runs over lo, which the guard's
+  # INPUT chain (keyed on the container bridges) leaves alone, so the host
+  # reaches its gateway address and the container does not: a real PASS.
+  expect_probe_row bvtest_v6 transitional "[fd00:b7::1]:$HOST_PORT" open blocked PASS
   # Docker records no gateway for an IPv6 subnet; the probe must still try it.
   if grep -q '^bvtest_v6 .*\[fd00:b7::1\]:22 (derived)' "$PROBE_OUT"; then
     pass "probe tries the IPv6 subnet's derived gateway"
@@ -299,7 +413,7 @@ fi
 # proves nothing about public isolation: no public row may claim PASS.
 run_probe --public 192.0.2.1:443; rc=$?
 expect_probe_rc 2 "$rc" "with an unreachable --public"
-if grep '(public)' "$PROBE_OUT" | grep -q ' PASS$'; then
+if grep -q '(public).* PASS$' "$PROBE_OUT"; then
   fail "a public row claims PASS although the host cannot reach --public"
 else
   pass "no public row claims PASS when the host cannot reach --public"
@@ -502,8 +616,13 @@ rm -f /tmp/bvloc.out
 
 # --- remove ---------------------------------------------------------------------------
 guard remove >/dev/null
-if ! iptables -w -S | grep -q 'BV-'; then pass "remove: no BV- rules left (IPv4)"; else fail "remove left IPv4 rules"; fi
-if command -v ip6tables >/dev/null && ip6tables -w -S 2>/dev/null | grep -q 'BV-'; then fail "remove left IPv6 rules"; else pass "remove: no BV- rules left (IPv6)"; fi
+# Captured first: a SIGPIPE from "iptables -S | grep -q" would read as "no match"
+# here, which is a PASS, so leftover rules could slip through.
+all4=$(iptables -w -S)
+if ! grep -q 'BV-' <<<"$all4"; then pass "remove: no BV- rules left (IPv4)"; else fail "remove left IPv4 rules"; fi
+all6=""
+command -v ip6tables >/dev/null && all6=$(ip6tables -w -S 2>/dev/null)
+if grep -q 'BV-' <<<"$all6"; then fail "remove left IPv6 rules"; else pass "remove: no BV- rules left (IPv6)"; fi
 if [ "$(docker_chains_v4)" = "$DOCKER_BEFORE" ]; then pass "Docker's own chains untouched"; else fail "Docker's chains changed"; fi
 
 echo

@@ -129,9 +129,11 @@ verdict() {
   esac
 }
 
-host_verdict() { verdict "$(bash -c "$TCP_TEST" "$1" "$2" 2>&1 </dev/null || true)"; }
+# LC_ALL=C on both sides: verdict() matches bash's English strerror text, which
+# a translated locale would turn into ERROR rows.
+host_verdict() { verdict "$(LC_ALL=C bash -c "$TCP_TEST" "$1" "$2" 2>&1 </dev/null || true)"; }
 container_verdict() { # PROBE ADDR PORT
-  verdict "$(docker exec "$1" bash -c "$TCP_TEST" "$2" "$3" 2>&1 </dev/null || true)"
+  verdict "$(docker exec -e LC_ALL=C "$1" bash -c "$TCP_TEST" "$2" "$3" 2>&1 </dev/null || true)"
 }
 
 # One long-lived probe per network. --init only makes `sleep 900` answer the
@@ -172,8 +174,10 @@ expect_blocked() { # NET ROLE PROBE ADDR PORT [NOTE]
   host=$(host_verdict "$addr" "$port")
   ctr=$(container_verdict "$probe" "$addr" "$port")
   [ "$host" = blocked ] && host=closed
-  if [ "$host" = error ] || [ "$ctr" = error ]; then error_row "$net" "$role" "$name" "$host" "$ctr"
-  elif [ "$ctr" = open ]; then fail_row "$net" "$role" "$name" "$host" OPEN FAIL
+  # A container that connected is a proven exposure whatever the host saw, so
+  # it is FAIL (exit 1) even when the host side of the row errored.
+  if [ "$ctr" = open ]; then fail_row "$net" "$role" "$name" "$host" OPEN FAIL
+  elif [ "$host" = error ] || [ "$ctr" = error ]; then error_row "$net" "$role" "$name" "$host" "$ctr"
   elif [ "$host" = closed ]; then na_row "$net" "$role" "$name" "$host" "$ctr"
   else pass_row "$net" "$role" "$name" "$host" "$ctr"
   fi
