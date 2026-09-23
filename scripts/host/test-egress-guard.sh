@@ -175,6 +175,41 @@ baseline bvt-int "$GW_INT" "$HOST_PORT"
 [ "$V6" -eq 1 ] && baseline bvt-v6 "fd00:b7::1" "$HOST_PORT"
 DOCKER_BEFORE=$(docker_chains_v4)
 
+# --- probe-isolation.sh helpers ---------------------------------------------------------
+PROBE_OUT=/tmp/bvprobe.out
+# run_probe ARGS...: run probe-isolation.sh on the test project, output to
+# $PROBE_OUT (shown in this log), status returned. The time limit only stops a
+# broken probe from hanging the harness; a full healthy run takes a few minutes.
+run_probe() {
+  timeout 600 bash "$PROBE" --project "$PROJECT" --image "$PROBE_IMAGE" "$@" >"$PROBE_OUT" 2>&1
+  local rc=$?
+  sed 's/^/      | /' "$PROBE_OUT"
+  return "$rc"
+}
+# probe_row NETWORK ROLE TARGET HOST CONTAINER RESULT: the table holds exactly
+# this row, formatted the way probe-isolation.sh formats it.
+probe_row() {
+  grep -qxF -- "$(printf '%-28s %-13s %-30s %-8s %-9s %s' "$@")" "$PROBE_OUT"
+}
+expect_probe_row() {
+  if probe_row "$@"; then pass "probe row: $*"; else fail "probe row missing: $*"; fi
+}
+expect_probe_rc() { # WANT GOT LABEL
+  if [ "$2" -eq "$1" ]; then pass "probe $3: exit $1"; else fail "probe $3: exit $2, expected $1"; fi
+}
+
+# --- probe-isolation.sh sees exposure ------------------------------------------------
+# Before apply the host listener is reachable from the project's networks (the
+# baseline above proved it), so a probe that reports everything as blocked, or
+# counts a failure to probe as "blocked", is caught here.
+v6_target=()
+[ "$V6" -eq 1 ] && v6_target=(--target "[fd00:b7::1]:$HOST_PORT")
+run_probe --target "$HOST:$HOST_PORT" "${v6_target[@]}" --public "$PUBLIC_IP:443"; rc=$?
+expect_probe_rc 1 "$rc" "before apply"
+expect_probe_row bvtest_legacy transitional "$HOST:$HOST_PORT" open OPEN FAIL
+# A bracketed IPv6 target is really tried: the v6 gateway is open before apply.
+[ "$V6" -eq 1 ] && expect_probe_row bvtest_v6 transitional "[fd00:b7::1]:$HOST_PORT" open OPEN FAIL
+
 # --- roles -------------------------------------------------------------------
 roles=$(guard roles)
 for want in "bvtest_internal internal" "bvtest_egress_out egress" "bvtest_tunnel_out tunnel" "bvtest_legacy transitional" "bvtest_lan lan"; do
@@ -221,11 +256,62 @@ else
 fi
 
 # --- probe-isolation.sh agrees -----------------------------------------------
-if bash "$PROBE" --project "$PROJECT" --image "$PROBE_IMAGE" --target "$HOST:$HOST_PORT" --target "$HOST:$NEIGHBOR_PORT" --public "$PUBLIC_IP:443"; then
-  pass "probe-isolation.sh: all expectations met"
-else
-  fail "probe-isolation.sh reported a failure"
+# A gateway on the host listener's port gives gateway rows that are real PASSes
+# (the host answers there, the probe must not); a port nothing listens on must
+# read N/A and must not fail the run.
+CLOSED_PORT=18096
+run_probe --target "$HOST:$HOST_PORT" --target "$HOST:$NEIGHBOR_PORT" --target "$GW_LEGACY:$HOST_PORT" \
+  --target "$HOST:$CLOSED_PORT" "${v6_target[@]}" --public "$PUBLIC_IP:443"; rc=$?
+expect_probe_rc 0 "$rc" "after apply"
+expect_probe_row bvtest_legacy transitional "$GW_LEGACY:$HOST_PORT" open blocked PASS
+expect_probe_row bvtest_internal internal "$HOST:$HOST_PORT" open blocked PASS
+expect_probe_row bvtest_egress_out egress "$PUBLIC_IP:443 (public)" open open PASS
+expect_probe_row bvtest_lan lan "$PUBLIC_IP:443 (public)" open blocked PASS
+expect_probe_row bvtest_legacy transitional "$HOST:$CLOSED_PORT" closed blocked "N/A (host cannot reach)"
+if grep -Eq '^N/A rows: [1-9]' "$PROBE_OUT"; then pass "probe summary counts N/A rows"; else fail "probe summary has no N/A count"; fi
+if [ "$V6" -eq 1 ]; then
+  # After apply the host's own connection to fd00:b7::1 carries that address as
+  # its source, which the guard's INPUT chain drops (seen in the lab; the IPv4
+  # equivalent is not dropped). The host cannot show the target reachable, so
+  # the row must read N/A, never PASS.
+  expect_probe_row bvtest_v6 transitional "[fd00:b7::1]:$HOST_PORT" closed blocked "N/A (host cannot reach)"
+  # Docker records no gateway for an IPv6 subnet; the probe must still try it.
+  if grep -q '^bvtest_v6 .*\[fd00:b7::1\]:22 (derived)' "$PROBE_OUT"; then
+    pass "probe tries the IPv6 subnet's derived gateway"
+  else
+    fail "probe skipped the IPv6 subnet's gateway"
+  fi
 fi
+
+# A probe that cannot run the test must say so (exit 2), never report "blocked".
+run_probe --image busybox:latest; rc=$?
+expect_probe_rc 2 "$rc" "with an image that has no bash"
+# docker exec failing on every connection attempt: rows are ERROR, never PASS.
+shim probexec docker "$REAL_DOCKER" '[ "$1" = exec ] && [[ "$*" == *dev/tcp* ]]'
+PATH="$SHIMS/probexec:$PATH" run_probe; rc=$?
+expect_probe_rc 2 "$rc" "when every docker exec fails"
+if grep -q ' ERROR$' "$PROBE_OUT" && ! grep -q ' PASS$' "$PROBE_OUT"; then
+  pass "failed probes read ERROR, not PASS"
+else
+  fail "failed probes did not all read ERROR"
+fi
+# A public target the host itself cannot reach (TEST-NET-1, never routed)
+# proves nothing about public isolation: no public row may claim PASS.
+run_probe --public 192.0.2.1:443; rc=$?
+expect_probe_rc 2 "$rc" "with an unreachable --public"
+if grep '(public)' "$PROBE_OUT" | grep -q ' PASS$'; then
+  fail "a public row claims PASS although the host cannot reach --public"
+else
+  pass "no public row claims PASS when the host cannot reach --public"
+fi
+# Malformed targets are usage errors, found before anything is probed.
+for bad in "--target $HOST" "--target $HOST:0" "--target $HOST:65536" "--target fd00:b7::1:80" \
+  "--target" "--public $PUBLIC_IP" "--public example.invalid:443"; do
+  # shellcheck disable=SC2086 # word splitting builds the argument list
+  timeout 60 bash "$PROBE" --project "$PROJECT" $bad >/dev/null 2>&1; rc=$?
+  expect_probe_rc 2 "$rc" "with $bad"
+done
+rm -f "$PROBE_OUT"
 
 # --- idempotency ---------------------------------------------------------------
 before=$(chains_v4)
