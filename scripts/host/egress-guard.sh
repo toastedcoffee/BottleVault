@@ -130,7 +130,13 @@ wait_for_docker() {
     [ "$SECONDS" -lt "$deadline" ] || break
     sleep 5
   done
-  if command -v iptables-legacy >/dev/null && iptables-legacy -S DOCKER-USER >/dev/null 2>&1; then
+  # Any iptables-legacy call creates a legacy filter table if none exists, after
+  # which every iptables-nft call warns on stderr (cron mail every minute).
+  # /proc/net/ip_tables_names lists this netns's legacy tables and reading it
+  # creates nothing, so only ask iptables-legacy when a filter table is there;
+  # Docker on the legacy backend always has one.
+  if command -v iptables-legacy >/dev/null && grep -qx filter /proc/net/ip_tables_names 2>/dev/null \
+    && iptables-legacy -S DOCKER-USER >/dev/null 2>&1; then
     die "Docker's rules are in the legacy iptables backend but 'iptables' is $(iptables -V); refusing to guard the wrong table"
   fi
   die "Docker is not running or its DOCKER-USER chain is missing (waited ${WAIT}s)"

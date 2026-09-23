@@ -233,7 +233,9 @@ out=$(guard apply)
 after=$(chains_v4)
 if [ "$before" = "$after" ]; then pass "second apply leaves rules identical"; else fail "second apply changed the rules"; fi
 if grep -q 'nothing to change' <<<"$out"; then pass "second apply reports nothing to change"; else fail "second apply output: $out"; fi
-if [ -z "$(guard apply --quiet)" ]; then pass "--quiet prints nothing when nothing changed"; else fail "--quiet printed on a clean run"; fi
+# Both streams: cron mails stderr as well as stdout.
+out=$(guard apply --quiet 2>&1)
+if [ -z "$out" ]; then pass "--quiet prints nothing when nothing changed"; else fail "--quiet printed on a clean run: $out"; fi
 
 # --- drift detection and repair ----------------------------------------------------
 check_is() { guard check >/dev/null 2>&1; local rc=$?; if [ "$rc" -eq "$1" ]; then pass "check exit $1 ($2)"; else fail "check exit $rc, expected $1 ($2)"; fi; }
@@ -336,6 +338,11 @@ chown 0 "$LOCK"
 
 # The lock is taken after the Docker wait: a boot-time apply that is still
 # waiting for Docker must not block the per-minute runs.
+# Its failure path also probes for Docker rules in the legacy backend; that
+# probe must not create a legacy table (after which every iptables call warns
+# on stderr, and a cron apply --quiet mails that warning every minute).
+legacy_filter() { grep -qx filter /proc/net/ip_tables_names 2>/dev/null; }
+legacy_before=absent; legacy_filter && legacy_before=present
 shim noinfo docker "$REAL_DOCKER" '[ "$1" = info ]'
 PATH="$SHIMS/noinfo:$PATH" guard apply --wait-for-docker 20 >/dev/null 2>&1 &
 waiter=$!
@@ -346,6 +353,13 @@ took=$((SECONDS - start))
 if [ "$rc" -eq 0 ] && [ "$took" -lt 10 ]; then pass "a run waiting for Docker does not hold the lock (check took ${took}s)"; else fail "check during a Docker wait: rc=$rc after ${took}s $(cat /tmp/bvshim.out)"; fi
 wait "$waiter"; rc=$?
 if [ "$rc" -eq 2 ]; then pass "apply gives up with exit 2 when Docker never comes up"; else fail "apply with Docker down: rc=$rc"; fi
+if [ "$legacy_before" = present ]; then
+  info "SKIPPED legacy-table check: a legacy filter table already existed before this run"
+elif legacy_filter; then
+  fail "the Docker-down path created a legacy iptables filter table"
+else
+  pass "the Docker-down path created no legacy iptables table"
+fi
 rm -f /tmp/bvshim.out
 
 # --- location safety ------------------------------------------------------------------
