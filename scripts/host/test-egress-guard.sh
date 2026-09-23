@@ -53,16 +53,69 @@ gateway_of() { docker network inspect -f '{{range .IPAM.Config}}{{if .Gateway}}{
 host_ip() { ip -4 route get "$PUBLIC_IP" | awk '{for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit }}'; }
 chains_v4() { for c in BV-GUARD BV-GUARD-IN BV-LOG-DROP; do iptables -w -S "$c" 2>/dev/null; done; }
 docker_chains_v4() { for c in DOCKER DOCKER-ISOLATION-STAGE-1 DOCKER-ISOLATION-STAGE-2; do iptables -w -S "$c" 2>/dev/null; done; }
+# Everything the guard owns or touches, both families, jumps included.
+guard_state() {
+  local t c
+  for t in iptables ip6tables; do
+    command -v "$t" >/dev/null || continue
+    for c in DOCKER-USER FORWARD INPUT BV-GUARD BV-GUARD-IN BV-LOG-DROP; do "$t" -w -S "$c" 2>/dev/null; done
+  done
+}
+
+# --- fault injection -------------------------------------------------------
+# A shim directory placed first in PATH for ONE guard invocation replaces a
+# single tool with a wrapper that fails in one specific situation and otherwise
+# runs the real tool. Absolute paths are resolved now, before any shim exists.
+SHIMS=/tmp/bvshim
+REAL_DOCKER=$(command -v docker)
+REAL_IPT=$(command -v iptables)
+REAL_IPTR=$(command -v iptables-restore)
+LOCK_HOLDER_PID=""
+
+# shim NAME TOOL REAL CONDITION: $SHIMS/NAME/TOOL fails when the bash test
+# CONDITION (over the tool's "$@") holds, and otherwise execs REAL.
+shim() {
+  mkdir -p "$SHIMS/$1"
+  printf '#!/usr/bin/env bash\nif %s; then echo "shim: injected %s failure" >&2; exit 1; fi\nexec %s "$@"\n' \
+    "$4" "$2" "$3" >"$SHIMS/$1/$2"
+  chmod 755 "$SHIMS/$1/$2"
+}
+
+# fill_fault NAME CHAIN: make the fill of CHAIN fail part-way, after its third
+# rule, whichever way the guard fills it. Rule by rule: the iptables shim
+# rejects that append. As one iptables-restore transaction: the shim hands the
+# REAL iptables-restore the same input with an invalid rule spliced in after
+# the third rule, so the real tool fails in the middle of its input.
+fill_fault() {
+  local chain=$2 dir="$SHIMS/$1"
+  mkdir -p "$dir"
+  cat >"$dir/iptables" <<EOF
+#!/usr/bin/env bash
+if [ "\$2" = -A ] && [ "\$3" = $chain ]; then
+  n=\$(( \$(cat $dir/appends 2>/dev/null || echo 0) + 1 ))
+  echo "\$n" >$dir/appends
+  if [ "\$n" -gt 3 ]; then echo "shim: injected iptables failure" >&2; exit 1; fi
+fi
+exec $REAL_IPT "\$@"
+EOF
+  chmod 755 "$dir/iptables"
+  cat >"$dir/iptables-restore" <<EOF
+#!/usr/bin/env bash
+awk '{ print } /^-A $chain / { n++; if (n == 3) print "-A $chain -m bvnosuchmatch -j DROP" }' | exec $REAL_IPTR "\$@"
+EOF
+  chmod 755 "$dir/iptables-restore"
+}
 
 HOST_LISTENER_PID=""
 cleanup() {
+  [ -n "$LOCK_HOLDER_PID" ] && kill "$LOCK_HOLDER_PID" >/dev/null 2>&1 || true
   guard remove >/dev/null 2>&1 || true
-  docker rm -f bvt-int bvt-int-peer bvt-egress bvt-tunnel bvt-legacy bvt-v6 bvt-neighbor bvt-mount bvt-lan bvt-lan-probe >/dev/null 2>&1 || true
+  docker rm -f bvt-int bvt-int-peer bvt-egress bvt-tunnel bvt-legacy bvt-v6 bvt-neighbor bvt-mount bvt-mount-file bvt-lan bvt-lan-probe >/dev/null 2>&1 || true
   for n in bvtest_internal bvtest_egress_out bvtest_tunnel_out bvtest_legacy bvtest_lan bvtest_v6 bvtest_neighbor; do
     docker network rm "$n" >/dev/null 2>&1 || true
   done
   [ -n "$HOST_LISTENER_PID" ] && kill "$HOST_LISTENER_PID" >/dev/null 2>&1 || true
-  rm -rf /tmp/bvloc
+  rm -rf /tmp/bvloc "$SHIMS"
 }
 trap cleanup EXIT
 
@@ -194,13 +247,76 @@ guard apply --quiet >/dev/null
 check_is 0 "jump first again"
 iptables -w -D DOCKER-USER -j RETURN 2>/dev/null || true
 
+# --- fail closed on tool errors -------------------------------------------------------
+# A firewall that meets an error must exit 2 and leave the rules it already has,
+# never report success over chains it emptied or half-filled.
+# expect_fail_closed LABEL SHIM COMMAND...: exit 2, guard state byte-identical.
+expect_fail_closed() {
+  local label=$1 dir="$SHIMS/$2" before after rc
+  shift 2
+  before=$(guard_state)
+  PATH="$dir:$PATH" guard "$@" >/tmp/bvshim.out 2>&1; rc=$?
+  after=$(guard_state)
+  if [ "$rc" -eq 2 ]; then pass "$label: exit 2"; else fail "$label: exit $rc, expected 2: $(cat /tmp/bvshim.out)"; fi
+  if [ "$before" = "$after" ]; then pass "$label: rules unchanged"; else fail "$label: rules changed: $(diff <(echo "$before") <(echo "$after") | head -20)"; fi
+}
+
+shim netls docker "$REAL_DOCKER" '[ "$1" = network ] && [ "$2" = ls ]'
+shim netinspect docker "$REAL_DOCKER" '[ "$1" = network ] && [ "$2" = inspect ]'
+expect_fail_closed "apply, docker network ls fails" netls apply
+expect_fail_closed "check, docker network ls fails" netls check
+expect_fail_closed "apply, docker network inspect fails" netinspect apply
+
+# Repair run whose fill of BV-GUARD fails part-way: the drifted chain stays as it was.
+iptables -w -D BV-GUARD 3
+fill_fault fill BV-GUARD
+expect_fail_closed "repair, BV-GUARD fill fails part-way" fill apply
+if grep -q 'repaired IPv4 chain BV-GUARD$' /tmp/bvshim.out; then fail "failed repair still printed 'repaired'"; else pass "failed repair does not claim a repair"; fi
+guard apply --quiet >/dev/null
+check_is 0 "repaired after the fault is gone"
+
+# The desired policy is computed in a scratch chain; if that fill fails, a clean
+# system must not be reported as drift (1) against a truncated policy.
+fill_fault scratch BV-GUARD-NEW
+expect_fail_closed "check, scratch fill fails" scratch check
+expect_fail_closed "apply, scratch fill fails" scratch apply
+
+# Concurrent runs share the scratch chains, so a second run waits for the lock
+# and then gives up with exit 2 rather than racing the first.
+# exec: the holder's PID is the process that holds the lock, so kill releases it.
+( exec 9>>/run/bv-egress-guard.lock && flock 9 && exec sleep 90 ) &
+LOCK_HOLDER_PID=$!
+sleep 1
+start=$SECONDS
+guard check >/tmp/bvshim.out 2>&1; rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'lock' /tmp/bvshim.out; then
+  pass "a second run gives up on the held lock with exit 2 (after $((SECONDS - start))s)"
+else
+  fail "lock: rc=$rc $(cat /tmp/bvshim.out)"
+fi
+kill "$LOCK_HOLDER_PID" >/dev/null 2>&1; wait "$LOCK_HOLDER_PID" 2>/dev/null; LOCK_HOLDER_PID=""
+check_is 0 "lock released"
+rm -f /tmp/bvshim.out
+
 # --- location safety ------------------------------------------------------------------
 mkdir -p /tmp/bvloc && cp "$GUARD" /tmp/bvloc/egress-guard.sh
 chown -R root:root /tmp/bvloc && chmod 700 /tmp/bvloc && chmod 700 /tmp/bvloc/egress-guard.sh
 docker run -d --name bvt-mount -v /tmp/bvloc:/x:ro "$PROBE_IMAGE" sleep 3600 >/dev/null
 BV_PROJECTS=$PROJECT bash /tmp/bvloc/egress-guard.sh check >/tmp/bvloc.out 2>&1; rc=$?
 if [ "$rc" -eq 2 ] && grep -q 'mounted into a container' /tmp/bvloc.out; then pass "refuses to run from a container-mounted directory"; else fail "location check: rc=$rc $(cat /tmp/bvloc.out)"; fi
+# If Docker cannot say what is mounted, the check must fail, not pass with nothing checked.
+shim dockerps docker "$REAL_DOCKER" '[ "$1" = ps ]'
+shim dockerinspect docker "$REAL_DOCKER" '[ "$1" = inspect ]'
+for s in dockerps dockerinspect; do
+  PATH="$SHIMS/$s:$PATH" BV_PROJECTS=$PROJECT bash /tmp/bvloc/egress-guard.sh check >/tmp/bvloc.out 2>&1; rc=$?
+  if [ "$rc" -eq 2 ]; then pass "mount check fails closed when docker ${s#docker} fails"; else fail "mount check with failing docker ${s#docker}: rc=$rc $(cat /tmp/bvloc.out)"; fi
+done
 docker rm -f bvt-mount >/dev/null
+# A bind mount of the script file itself is as dangerous as one of its directory.
+docker run -d --name bvt-mount-file -v /tmp/bvloc/egress-guard.sh:/x.sh:ro "$PROBE_IMAGE" sleep 3600 >/dev/null
+BV_PROJECTS=$PROJECT bash /tmp/bvloc/egress-guard.sh check >/tmp/bvloc.out 2>&1; rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'mounted into a container' /tmp/bvloc.out; then pass "refuses to run when the script file itself is mounted"; else fail "file-mount check: rc=$rc $(cat /tmp/bvloc.out)"; fi
+docker rm -f bvt-mount-file >/dev/null
 chmod 775 /tmp/bvloc
 BV_PROJECTS=$PROJECT bash /tmp/bvloc/egress-guard.sh check >/tmp/bvloc.out 2>&1; rc=$?
 if [ "$rc" -eq 2 ] && grep -q 'writable' /tmp/bvloc.out; then pass "refuses a group-writable directory"; else fail "permission check: rc=$rc $(cat /tmp/bvloc.out)"; fi

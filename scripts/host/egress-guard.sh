@@ -35,13 +35,18 @@
 #
 # Run as root, from a root-owned directory that is not mounted into any
 # container (the script refuses otherwise). Install: DEPLOY.md §9.
-set -euo pipefail
+set -eEuo pipefail
+# $(...) subshells keep errexit, so a failure inside one aborts it instead of
+# returning truncated output that is then compared or applied as if complete.
+shopt -s inherit_errexit
 
 readonly FWD=BV-GUARD
 readonly IN=BV-GUARD-IN
 readonly DROP=BV-LOG-DROP
 readonly SPECIAL_V4="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 127.0.0.0/8 224.0.0.0/4 240.0.0.0/4"
 readonly SPECIAL_V6="fc00::/7 fe80::/10 ff00::/8 ::1/128"
+readonly LOCK=/run/bv-egress-guard.lock
+readonly LOCK_WAIT=30
 
 PROJECTS="${BV_PROJECTS:-bottlevault}"
 QUIET=0
@@ -49,11 +54,22 @@ WAIT=0
 NETS_FILE=""
 FAMILIES="4"
 CHANGED=0
+DESIRED=""
 
 die()  { echo "egress-guard: ERROR: $*" >&2; exit 2; }
 say()  { [ "$QUIET" -eq 1 ] || echo "egress-guard: $*"; }
 warn() { [ "$QUIET" -eq 1 ] || echo "egress-guard: WARN: $*" >&2; }
 note() { echo "egress-guard: $*"; }   # always printed: repairs and drift
+
+# Exit 1 means "drift" to check's callers, so no unexpected failure may exit
+# with a command's own status. set -E carries this trap into functions and
+# subshells; conditions (if, while, ||) are exempt, which is what lets the
+# script probe with a failing command on purpose.
+on_error() {
+  echo "egress-guard: ERROR: unexpected failure (exit $1) at line $2: $3" >&2
+  exit 2
+}
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 
 cleanup_tmp() { if [ -n "$NETS_FILE" ]; then rm -f "$NETS_FILE"; fi; }
 trap cleanup_tmp EXIT
@@ -62,6 +78,26 @@ ipt() {
   local fam=$1
   shift
   if [ "$fam" = 4 ]; then iptables -w "$@"; else ip6tables -w "$@"; fi
+}
+
+# iptr FAMILY: apply the iptables-restore input on stdin as one transaction.
+# --noflush leaves every chain alone except those named by a ":CHAIN" line.
+iptr() {
+  if [ "$1" = 4 ]; then iptables-restore -w --noflush; else ip6tables-restore -w --noflush; fi
+}
+
+# Every run that changes or compares chains shares the *-NEW scratch chains, so
+# a cron apply and a manual check must not overlap. Bounded wait, then give up:
+# the rules already in place stay in force. flock -n in a loop (not flock -w)
+# because BusyBox flock has no -w; util-linux (TrueNAS SCALE) has both.
+take_lock() {
+  local deadline=$((SECONDS + LOCK_WAIT))
+  command -v flock >/dev/null || die "flock not found (util-linux); refusing to run without a lock"
+  exec 9>>"$LOCK" || die "cannot open lock file $LOCK"
+  until flock -n 9; do
+    [ "$SECONDS" -lt "$deadline" ] || die "another egress-guard run still holds the lock $LOCK after ${LOCK_WAIT}s; leaving the current rules alone"
+    sleep 1
+  done
 }
 
 usage() {
@@ -74,6 +110,7 @@ require_root() { [ "$(id -u)" -eq 0 ] || die "must run as root"; }
 require_tools() {
   command -v docker >/dev/null || die "docker CLI not found"
   command -v iptables >/dev/null || die "iptables not found"
+  command -v iptables-restore >/dev/null || die "iptables-restore not found"
 }
 
 wait_for_docker() {
@@ -95,7 +132,7 @@ wait_for_docker() {
 # container could get root on the host at the next run.
 check_location() {
   if [ "${BV_GUARD_SKIP_LOCATION_CHECK:-0}" = 1 ]; then return 0; fi
-  local self dir p owner mode src
+  local self dir p owner mode ids mounts src
   self=$(readlink -f "$0")
   dir=$(dirname "$self")
   for p in "$self" "$dir"; do
@@ -106,14 +143,26 @@ check_location() {
       die "$p must not be group- or world-writable (mode $mode)"
     fi
   done
+  # Captured in the main shell: if Docker cannot say what is mounted, the check
+  # fails rather than passing with nothing checked.
+  ids=$(docker ps -aq) || die "could not list containers to check their mounts"
+  mounts=""
+  if [ -n "$ids" ]; then
+    # shellcheck disable=SC2086  # container IDs are hex, one per word
+    mounts=$(docker inspect --format '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' $ids) \
+      || die "could not inspect containers to check their mounts"
+  fi
   while IFS= read -r src; do
     [ -n "$src" ] || continue
     src=$(readlink -f "$src" 2>/dev/null || printf '%s' "$src")
     src=${src%/}
+    if [ "$src" = "$self" ]; then
+      die "$self is itself mounted into a container; a container could rewrite this root-run script"
+    fi
     case "$dir/" in
       "$src"/*) die "$dir is inside $src, which is mounted into a container; a container could rewrite this root-run script" ;;
     esac
-  done < <(docker ps -aq | xargs -r docker inspect --format '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}')
+  done <<<"$mounts"
 }
 
 role_of() {
@@ -133,13 +182,20 @@ role_of() {
 }
 
 # Writes "name|role|subnet subnet ..." lines, sorted by name so rule order is stable.
+# Docker's answers are captured in the main shell with || die: a failed query
+# must stop the run, because an empty answer would reconcile the guard's chains
+# to empty. Zero networks from a query that succeeded is real (stack down).
 load_networks() {
   NETS_FILE=$(mktemp)
-  local project net info internal subnets role
+  local project names net info internal subnets role
   for project in $PROJECTS; do
+    names=$(docker network ls --filter "label=com.docker.compose.project=${project}" --format '{{.Name}}') \
+      || die "could not list the networks of project $project; leaving the current rules alone"
+    names=$(sort <<<"$names")
     while IFS= read -r net; do
       [ -n "$net" ] || continue
-      info=$(docker network inspect "$net" --format '{{.Internal}}|{{range .IPAM.Config}}{{.Subnet}} {{end}}')
+      info=$(docker network inspect "$net" --format '{{.Internal}}|{{range .IPAM.Config}}{{.Subnet}} {{end}}') \
+        || die "could not inspect network $net; leaving the current rules alone"
       internal=${info%%|*}
       subnets=${info#*|}
       role=$(role_of "$net" "$internal")
@@ -151,11 +207,17 @@ load_networks() {
         warn "network $net has no explicit policy; allowing public destinations on any port (transitional)"
       fi
       printf '%s|%s|%s\n' "$net" "$role" "$subnets" >>"$NETS_FILE"
-    done < <(docker network ls --filter "label=com.docker.compose.project=${project}" --format '{{.Name}}' | sort)
+    done <<<"$names"
   done
 }
 
-has_v6_subnets() { cut -d'|' -f3 "$NETS_FILE" | grep -q ':'; }
+# Not "cut | grep -q": under pipefail, grep -q exiting early can SIGPIPE cut and
+# turn a match into "no IPv6", which would leave IPv6 unguarded.
+has_v6_subnets() {
+  local subnets
+  subnets=$(cut -d'|' -f3 "$NETS_FILE") || die "could not read the network list $NETS_FILE"
+  [[ "$subnets" == *:* ]]
+}
 
 # Must run in the main shell (not inside $(...)) so that die() stops the script.
 decide_families() {
@@ -165,6 +227,9 @@ decide_families() {
     FAMILIES="4 6"
   elif command -v ip6tables >/dev/null && ip6tables -w -S INPUT >/dev/null 2>&1; then
     FAMILIES="4 6"   # keep the (empty) IPv6 chains reconciled so stale rules disappear
+  fi
+  if [ "$FAMILIES" = "4 6" ]; then
+    command -v ip6tables-restore >/dev/null || die "ip6tables-restore not found; refusing to leave IPv6 unguarded"
   fi
 }
 
@@ -211,34 +276,46 @@ desired() {
   done <"$NETS_FILE"
 }
 
-# fill_chain FAMILY TARGET POLICY_CHAIN: append POLICY_CHAIN's desired rules to TARGET.
+# fill_chain FAMILY TARGET POLICY_CHAIN: replace TARGET's rules with
+# POLICY_CHAIN's desired rules in ONE iptables-restore transaction. Under
+# --noflush the ":TARGET" line creates TARGET or flushes it, touching no other
+# chain; if any rule is rejected, nothing is committed and TARGET keeps its
+# previous rules. Rule-by-rule appends could leave it half-filled (fail-open)
+# and would repeat that every minute.
 fill_chain() {
-  local fam=$1 target=$2 policy=$3 line
-  local -a args
+  local fam=$1 target=$2 policy=$3 rules line block
+  # A plain assignment on purpose: "|| die" here would switch errexit off
+  # inside desired and let it return a truncated list with status 0.
+  rules=$(desired "$fam" "$policy")
+  block="*filter"$'\n'":$target - [0:0]"$'\n'
   while IFS= read -r line; do
     [ -n "$line" ] || continue
-    read -ra args <<<"$line"
-    ipt "$fam" -A "$target" "${args[@]}"
-  done < <(desired "$fam" "$policy")
+    block+="-A $target $line"$'\n'
+  done <<<"$rules"
+  block+="COMMIT"$'\n'
+  iptr "$fam" <<<"$block" || die "IPv$fam rules for $target were rejected; $target keeps its previous rules"
 }
 
 current_rules() { ipt "$1" -S "$2" 2>/dev/null || true; }
 
-# The desired chain in iptables' own canonical form, built in a scratch chain
-# and renamed, so the comparison with current_rules is exact.
+# Sets DESIRED to the chain in iptables' own canonical form, built in a scratch
+# chain and renamed, so the comparison with current_rules is exact. Sets a
+# global rather than printing: inside $(...) a failure would only end the
+# subshell, and a truncated "desired" set would pass for the real one.
 desired_rules() {
-  local fam=$1 chain=$2 tmp="${2}-NEW"
-  ipt "$fam" -N "$tmp" 2>/dev/null || ipt "$fam" -F "$tmp"
+  local fam=$1 chain=$2 tmp="${2}-NEW" raw
   fill_chain "$fam" "$tmp" "$chain"
-  ipt "$fam" -S "$tmp" | sed -E "s/^(-[NA]) ${tmp}( |\$)/\1 ${chain}\2/"
+  raw=$(ipt "$fam" -S "$tmp") || die "could not read back the scratch chain $tmp"
   ipt "$fam" -F "$tmp"
   ipt "$fam" -X "$tmp"
+  DESIRED=$(sed -E "s/^(-[NA]) ${tmp}( |\$)/\1 ${chain}\2/" <<<"$raw")
 }
 
 reconcile_chain() {
-  local fam=$1 chain=$2
-  if [ "$(current_rules "$fam" "$chain")" = "$(desired_rules "$fam" "$chain")" ]; then return 0; fi
-  ipt "$fam" -N "$chain" 2>/dev/null || ipt "$fam" -F "$chain"
+  local fam=$1 chain=$2 current
+  desired_rules "$fam" "$chain"
+  current=$(current_rules "$fam" "$chain")
+  if [ "$current" = "$DESIRED" ]; then return 0; fi
   fill_chain "$fam" "$chain" "$chain"
   note "repaired IPv$fam chain $chain"
   CHANGED=1
@@ -246,7 +323,9 @@ reconcile_chain() {
 
 jump_is_first_and_only() {
   local fam=$1 parent=$2 chain=$3 rules first count
-  rules=$(ipt "$fam" -S "$parent")
+  # Called as a condition, where errexit is off: without || die, an unreadable
+  # parent would look like a missing jump and be reported as drift, not error.
+  rules=$(ipt "$fam" -S "$parent") || die "could not read IPv$fam chain $parent"
   first=$(grep -m1 '^-A ' <<<"$rules" || true)
   count=$(grep -c -- "^-A ${parent} -j ${chain}\$" <<<"$rules" || true)
   [ "$first" = "-A ${parent} -j ${chain}" ] && [ "$count" = 1 ]
@@ -264,6 +343,7 @@ reconcile_jump() {
 cmd_apply() {
   require_root
   require_tools
+  take_lock
   wait_for_docker
   check_location
   load_networks
@@ -282,12 +362,13 @@ cmd_apply() {
 cmd_check() {
   require_root
   require_tools
+  take_lock
   WAIT=0
   wait_for_docker
   check_location
   load_networks
   decide_families
-  local fam chain drift=0
+  local fam chain current drift=0
   for fam in $FAMILIES; do
     if ! ipt "$fam" -S "$DROP" >/dev/null 2>&1; then
       note "drift: IPv$fam chain $DROP missing"
@@ -295,7 +376,9 @@ cmd_check() {
       continue
     fi
     for chain in "$DROP" "$FWD" "$IN"; do
-      if [ "$(current_rules "$fam" "$chain")" != "$(desired_rules "$fam" "$chain")" ]; then
+      desired_rules "$fam" "$chain"   # main shell: a failure is exit 2, never "drift"
+      current=$(current_rules "$fam" "$chain")
+      if [ "$current" != "$DESIRED" ]; then
         note "drift: IPv$fam chain $chain differs from policy"
         drift=1
       fi
@@ -329,6 +412,7 @@ cmd_roles() {
 
 cmd_remove() {
   require_root
+  take_lock
   local fam chain parent
   for fam in 4 6; do
     if [ "$fam" = 6 ] && ! command -v ip6tables >/dev/null; then continue; fi
