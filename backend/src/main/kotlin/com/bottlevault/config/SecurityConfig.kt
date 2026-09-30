@@ -3,6 +3,7 @@
 package com.bottlevault.config
 
 import com.bottlevault.auth.JwtAuthenticationFilter
+import jakarta.servlet.DispatcherType
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -43,6 +44,15 @@ class SecurityConfig(
             .exceptionHandling { it.authenticationEntryPoint(HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)) }
             .authorizeHttpRequests { auth ->
                 auth
+                    // Framework-generated errors (unknown route, unreadable body, an
+                    // unhandled exception) are rendered by the servlet container's
+                    // ERROR dispatch to /error. The JWT filter doesn't run on that
+                    // dispatch, so denyAll below answered every one of them with 401
+                    // and the client then spent a refresh-token rotation retrying
+                    // what was really a 404/400/500. Only that internal dispatch is
+                    // permitted: a client requesting /error directly is an ordinary
+                    // REQUEST dispatch and still hits denyAll.
+                    .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                     .requestMatchers("/api/auth/**").permitAll()
                     .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/brands/**", "/api/products/**").permitAll()
