@@ -16,12 +16,13 @@ import javax.crypto.SecretKey
  */
 @Component
 class JwtTokenProvider(
-    @Value("\${app.jwt.secret}") private val jwtSecret: String,
+    @Value("\${app.jwt.secret}") jwtSecret: String,
     @Value("\${app.jwt.expiration-ms}") private val accessExpirationMs: Long
 ) {
-    private val key: SecretKey by lazy {
-        Keys.hmacShaKeyFor(jwtSecret.toByteArray())
-    }
+    // Built at construction, not lazily: a secret under HS256's 256-bit floor
+    // throws WeakKeyException and fails the boot, instead of surfacing as a 500
+    // on the first login.
+    private val key: SecretKey = Keys.hmacShaKeyFor(jwtSecret.toByteArray())
 
     fun generateAccessToken(userId: String): String {
         val now = Date()
