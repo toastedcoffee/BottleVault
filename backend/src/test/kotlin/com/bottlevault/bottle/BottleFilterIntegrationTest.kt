@@ -153,6 +153,23 @@ class BottleFilterIntegrationTest : AbstractPostgresIntegrationTest() {
             .andExpect(jsonPath("$.totalElements").value(2))
     }
 
+    // --- ordering ---
+
+    @Test
+    fun `the list is always most recently updated first, whatever sort is sent`() {
+        // There is no client-chosen sort: the parameter never had a caller, and it
+        // used to go straight into the JPQL ORDER BY. A reversed order, a property
+        // path into another entity, and an unknown field are all ignored now.
+        for (sort in listOf(null, "updatedAt,asc", "user.passwordHash", "product.brand.id,desc", "noSuchField")) {
+            val params = if (sort == null) emptyArray() else arrayOf("sort" to sort)
+            // The fixture creates the whiskey first, then the vodka.
+            listBottles(*params)
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content[0].product.displayName").value("Grey Goose Vodka"))
+                .andExpect(jsonPath("$.content[1].product.displayName").value("Old No. 7 Tennessee Whiskey"))
+        }
+    }
+
     private fun listBottles(vararg params: Pair<String, String>) =
         mockMvc.perform(
             get("/api/bottles")
