@@ -30,11 +30,9 @@ class BottleService(
         type: AlcoholType?,
         search: String?,
         page: Int,
-        size: Int,
-        sort: String?
+        size: Int
     ): PageResponse<BottleResponse> {
-        val sortOrder = parseSortOrder(sort)
-        val pageable = PageRequest.of(page, size, sortOrder)
+        val pageable = PageRequest.of(page, size, DEFAULT_SORT)
 
         val bottlePage = bottleRepository.findFiltered(
             userId = userId,
@@ -117,12 +115,11 @@ class BottleService(
         bottleRepository.findByIdAndUserId(bottleId, userId)
             ?: throw ResourceNotFoundException("Bottle not found")
 
-    private fun parseSortOrder(sort: String?): Sort {
-        if (sort.isNullOrBlank()) return Sort.by(Sort.Direction.DESC, "updatedAt")
-        val parts = sort.split(",")
-        val field = parts[0]
-        val direction = if (parts.size > 1 && parts[1].equals("asc", ignoreCase = true))
-            Sort.Direction.ASC else Sort.Direction.DESC
-        return Sort.by(direction, field)
+    private companion object {
+        // The only order the app has ever used. There is deliberately no
+        // client-chosen sort: the parameter never had a caller, and the free-form
+        // value it took went straight into the JPQL ORDER BY. id breaks
+        // updatedAt ties, so the order (and paging) is deterministic.
+        val DEFAULT_SORT: Sort = Sort.by(Sort.Direction.DESC, "updatedAt", "id")
     }
 }

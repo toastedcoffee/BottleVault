@@ -28,10 +28,9 @@ class BottleController(
         @RequestParam search: String?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int,
-        @RequestParam sort: String?,
         auth: Authentication
     ): PageResponse<BottleResponse> =
-        bottleService.getBottles(userId(auth), status, type, search, page, size, sort)
+        bottleService.getBottles(userId(auth), status, type, search, page, size)
 
     @GetMapping("/{id}")
     fun getBottleById(@PathVariable id: UUID, auth: Authentication): BottleResponse =

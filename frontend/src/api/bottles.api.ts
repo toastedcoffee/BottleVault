@@ -10,7 +10,6 @@ export interface BottleQueryParams {
   search?: string;
   page?: number;
   size?: number;
-  sort?: string;
 }
 
 export const bottlesApi = {

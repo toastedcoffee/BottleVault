@@ -15,6 +15,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -151,6 +152,35 @@ class BottleFilterIntegrationTest : AbstractPostgresIntegrationTest() {
     fun `no filters returns the whole collection`() {
         listBottles()
             .andExpect(jsonPath("$.totalElements").value(2))
+    }
+
+    // --- ordering ---
+
+    @Test
+    fun `the list is always most recently updated first, whatever sort is sent`() {
+        // The fixture creates the whiskey, then the vodka. Updating the whiskey now
+        // makes it the most recently updated but still the oldest created, so this
+        // tells updatedAt ordering apart from createdAt ordering.
+        val whiskeyId = objectMapper.readTree(
+            listBottles("status" to "UNOPENED").andReturn().response.contentAsString
+        )["content"][0]["id"].asString()
+        mockMvc.perform(
+            patch("/api/bottles/$whiskeyId/status")
+                .header("Authorization", "Bearer $accessToken")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"status":"OPENED"}""")
+        ).andExpect(status().isOk)
+
+        // There is no client-chosen sort: the parameter never had a caller, and it
+        // used to go straight into the JPQL ORDER BY. A reversed order, a property
+        // path into another entity, and an unknown field are all ignored now.
+        for (sort in listOf(null, "updatedAt,asc", "createdAt,desc", "user.passwordHash", "product.brand.id,desc", "noSuchField")) {
+            val params = if (sort == null) emptyArray() else arrayOf("sort" to sort)
+            listBottles(*params)
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content[0].product.displayName").value("Old No. 7 Tennessee Whiskey"))
+                .andExpect(jsonPath("$.content[1].product.displayName").value("Grey Goose Vodka"))
+        }
     }
 
     private fun listBottles(vararg params: Pair<String, String>) =
