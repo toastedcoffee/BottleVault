@@ -295,11 +295,16 @@ info "host=$HOST neighbor=$NEIGHBOR_IP peer=$PEER_IP v6=$V6 onlink6=$ONLINK6"
 # container's resolv.conf ("# ExtServers: [...]"). Fallback: the host's own
 # resolv.conf, minus loopback stubs. On the NAS this is the LAN router: a
 # private address, which the guard drops unless it is on the allowed-DNS list.
-HOST_DNS=$(docker exec bvt-legacy grep '^# ExtServers:' /etc/resolv.conf 2>/dev/null \
-  | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | sort -u | tr '\n' ' ' | sed 's/ $//')
-if [ -z "$HOST_DNS" ]; then
+# An entry written "host(ADDR)" is queried from the host's own namespace (a
+# loopback stub); that traffic never crosses the guard, so it is not counted.
+ext=$(docker exec bvt-legacy grep '^# ExtServers:' /etc/resolv.conf 2>/dev/null || true)
+if [ -n "$ext" ]; then
+  HOST_DNS=$(sed -E 's/host\([^)]*\)//g' <<<"$ext" \
+    | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | sort -u | tr '\n' ' ' | sed 's/ $//')
+else
   HOST_DNS=$(awk '$1 == "nameserver" && $2 !~ /^127\./ && $2 !~ /:/ { print $2 }' /etc/resolv.conf | tr '\n' ' ' | sed 's/ $//')
 fi
+info "Docker's record of its upstream resolvers: ${ext:-none}"
 if [[ " $HOST_DNS " == *" $OTHER_DNS "* ]]; then OTHER_DNS=149.112.112.112; fi
 info "resolvers Docker forwards to: ${HOST_DNS:-NONE}; non-listed resolver: $OTHER_DNS"
 [ -n "$HOST_DNS" ] || fail "could not find the resolver Docker forwards to; the DNS checks cannot mean anything"
@@ -616,7 +621,9 @@ else
   fail "empty allowed-DNS list: rc=$rc output: $out"
 fi
 expect_unresolved bvt-egress www.example.com
-expect_unresolved bvt-legacy www.example.org
+expect_unresolved bvt-tunnel www.example.org
+# Not asserted for the transitional network: it may reach any public address,
+# so with a public resolver (CI's) its lookups still work, by design.
 out=$(guard check --quiet 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && grep -q 'BV_ALLOWED_DNS is empty' <<<"$out"; then pass "empty allowed-DNS list: check warns too"; else fail "empty allowed-DNS list, check: rc=$rc output: $out"; fi
 GUARD_DNS=$HOST_DNS

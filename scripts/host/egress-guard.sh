@@ -21,8 +21,12 @@
 #                      networks may query on udp/tcp 53. Docker's embedded DNS
 #                      forwards internet lookups from inside the container, so
 #                      they leave through the guard like any other packet.
-#                      Empty or unset: no DNS for anyone (fails closed), and
-#                      every run says so on stderr, --quiet or not.
+#                      Empty or unset: no resolver is allowed (fails closed):
+#                      tunnel and egress networks get no DNS at all, and
+#                      transitional ones only what their public allowance
+#                      already reaches. Every run says so on stderr, --quiet
+#                      or not. (Transitional networks reach any public address
+#                      on any port, port 53 included, list or no list.)
 #   BV_GUARD_SKIP_LOCATION_CHECK=1   test harness only; never on a real host
 #
 # Policy for traffic that ENTERS THE HOST FROM a guarded network's bridge
@@ -141,7 +145,6 @@ require_tools() {
   command -v docker >/dev/null || die "docker CLI not found"
   command -v iptables >/dev/null || die "iptables not found"
   command -v iptables-restore >/dev/null || die "iptables-restore not found"
-  command -v ip >/dev/null || die "ip (iproute2) not found"
 }
 
 wait_for_docker() {
@@ -357,7 +360,7 @@ load_dns() {
     lookers=$(awk -F'|' '$2 == "tunnel" || $2 == "egress" || $2 == "transitional" { printf "%s ", $1 }' "$NETS_FILE") \
       || die "could not read the network list $NETS_FILE"
     if [ -n "$lookers" ]; then
-      loud "BV_ALLOWED_DNS is empty, so containers on ${lookers}cannot resolve internet names (failing closed); set it to the resolver(s) Docker forwards to"
+      loud "BV_ALLOWED_DNS is empty, so no resolver is allowed for ${lookers}(failing closed: tunnel and egress networks cannot resolve internet names, transitional ones only through a public resolver); set it to the resolver(s) Docker forwards to"
     fi
   fi
 }
@@ -588,6 +591,7 @@ prepare() {
   local fam
   require_root
   require_tools
+  command -v ip >/dev/null || die "ip (iproute2) not found"
   wait_for_docker
   take_lock
   check_location
