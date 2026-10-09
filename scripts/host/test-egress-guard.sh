@@ -215,7 +215,8 @@ if [ -n "${BV_TEST_DNS:-}" ]; then
   HOST_DNS=$BV_TEST_DNS
   DNS_OPT=(--dns "$HOST_DNS")
   DNS_MODE="set with --dns: BV_TEST_DNS"
-elif [ -z "$HOST_DNS" ]; then
+elif [ -z "$HOST_DNS" ] || [[ "$EXT_DNS" == *"host("* ]]; then
+  # Any host-namespace entry: Docker may answer through it, past the guard.
   HOST_DNS=1.1.1.1
   DNS_OPT=(--dns "$HOST_DNS")
   DNS_MODE="set with --dns: Docker resolves in the host's namespace here"
