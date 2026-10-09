@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2025-2026 toastedcoffee
+name: Host guard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/host/**'
+      - '.github/workflows/host-guard.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/host/**'
+      - '.github/workflows/host-guard.yml'
+  schedule:
+    # Weekly, so a runner-image or Docker change that breaks the guard is
+    # noticed without waiting for the next edit to scripts/host.
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  harness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Show the firewall backend and Docker version
+        run: |
+          sudo iptables -V
+          docker version --format '{{.Server.Version}}'
+      - name: Run the end-to-end harness
+        run: sudo BV_REQUIRE_FULL=1 bash scripts/host/test-egress-guard.sh
