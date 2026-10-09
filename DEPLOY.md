@@ -689,22 +689,31 @@ On TrueNAS SCALE:
    (as root):
    ```bash
    cd /mnt/<pool>/configs/host-guard
+   chown root:root . && chmod 0700 .
    for f in egress-guard.sh probe-isolation.sh; do
-     curl -fsSLo "$f" "https://raw.githubusercontent.com/toastedcoffee/BottleVault/<commit-sha>/scripts/host/$f"
+     curl -fsSLo "$f.new" "https://raw.githubusercontent.com/toastedcoffee/BottleVault/<commit-sha>/scripts/host/$f"
    done
-   sha256sum egress-guard.sh probe-isolation.sh
-   chown root:root . egress-guard.sh probe-isolation.sh
-   chmod 0700 . egress-guard.sh probe-isolation.sh
+   sha256sum egress-guard.sh.new probe-isolation.sh.new
    ```
    Compare the checksums with the same files from a checkout of that commit:
    `git show <commit-sha>:scripts/host/egress-guard.sh | sha256sum` (and the
-   same for the probe).
+   same for the probe). Only when both match, put them in place:
+   ```bash
+   for f in egress-guard.sh probe-isolation.sh; do
+     chown root:root "$f.new" && chmod 0700 "$f.new" && mv -f "$f.new" "$f"
+   done
+   ```
+   The `.new` step matters on an update, when cron is already running the
+   guard every minute. Downloading straight over the live file would let root
+   run an unverified, or half-written, script.
 
 2. **Find the resolver(s) Docker forwards to** (see 9.3 for the details):
    ```bash
    grep '^nameserver' /etc/resolv.conf
-   docker exec <any running container of the stack> grep ExtServers /etc/resolv.conf
+   docker exec bottlevault-api grep ExtServers /etc/resolv.conf
    ```
+   Use a container that has a shell and `grep`, such as the API. The tunnel's
+   `cloudflared` image is distroless and has neither.
 
 3. **Write the wrapper.** Every caller (Post Init, cron, and you, by hand) runs
    the wrapper, **never `egress-guard.sh` directly**. Only the wrapper carries
@@ -773,7 +782,7 @@ through a bridge, or that would open more than one host:
 | Refused | Why |
 |---|---|
 | A prefix (`192.0.2.0/24`), a port (`192.0.2.1:53`), a hostname | A prefix would open DNS to a whole range, and a `/8` would be the LAN. Ports and names are not addresses. |
-| Unspecified, loopback, link-local, multicast, reserved (`0.0.0.0/8`, `127.0.0.0/8` such as a `127.0.0.53` stub, `169.254.0.0/16`, `224.0.0.0` and up, `::`, `::1`, `fe80::/10`, `ff00::/8`) | Traffic to these never passes through the host's forwarding path, so the allowance would do nothing and lookups would still fail. |
+| Unspecified, loopback, link-local, multicast, reserved (`0.0.0.0/8`, `127.0.0.0/8` such as a `127.0.0.53` stub, `169.254.0.0/16`, `224.0.0.0` and up, `::`, `::1`, `fe80::/10`, `ff00::/8`) | None of these is a resolver a container can reach through its bridge. Loopback and link-local traffic never leaves through the forwarding path, and multicast and reserved space hold no unicast resolver, so the allowance would do nothing and lookups would still fail. |
 | An address of the host itself | The guard never opens the host to containers. |
 
 **Empty or unset fails closed.** No resolver is allowed, so `tunnel` and
@@ -788,7 +797,8 @@ prints a WARN naming the affected networks, so cron mails it every minute.
    List **all** of them: Docker may use any of them.
 2. Confirm what Docker actually does by reading the comment Docker writes into
    a container's resolv.conf:
-   `docker exec <container> grep ExtServers /etc/resolv.conf`.
+   `docker exec bottlevault-api grep ExtServers /etc/resolv.conf` (any
+   container on a compose network that has `grep`).
    - `# ExtServers: [192.0.2.1]` (bare addresses): Docker forwards from the
      container's namespace. Those lookups cross the guard, and
      `BV_ALLOWED_DNS` must name exactly these addresses.
@@ -797,7 +807,10 @@ prints a WARN naming the affected networks, so cron mails it every minute.
      namespace**. Container lookups never cross the guard and work whatever
      the list says. On such a host `BV_ALLOWED_DNS` affects only services with
      an explicit compose `dns:`, whose lookups do leave from the container.
-     Set it to those `dns:` addresses.
+     Set it to those `dns:` addresses. If no service has `dns:`, nothing needs
+     the list and the empty-list WARN would be mailed every minute. Set it to
+     a public resolver, the same one you would use for `dns:` (for example
+     `1.1.1.1`), to quiet the WARN without opening anything private.
 3. Confirm the lookup works after `apply`: from a container on an
    `egress`/`tunnel`/`transitional` network,
    `docker exec <container> getent hosts example.com` must print an address.
@@ -863,15 +876,19 @@ Re-verify after a reboot, after restarting Docker, and after TrueNAS updates.
 ### 9.6 Troubleshooting
 
 **Exit codes.** `check`: `0` rules current, `1` drift (it names each drifted
-chain or jump), `2` error. `apply`: `0` done, `2` error. On any error the
-guard changes nothing: the rules from the last good run stay in force, but
-new or recreated networks are not picked up until the error is fixed. A
-persistent error is mailed by cron every minute.
+chain or jump), `2` error. `apply`: `0` done, `2` error. Errors found before
+any rule is touched (location, Docker queries, the DNS list, the network list)
+change nothing: the rules from the last good run stay in force, but new or
+recreated networks are not picked up until the error is fixed. Each chain and
+jump is replaced in one transaction, so a later failure leaves no
+half-written chain, though chains reconciled earlier in that run keep their
+new rules. Run `./guard.sh check` after fixing the cause. A persistent error
+is mailed by cron every minute.
 
 | Symptom | Cause and fix |
 |---|---|
 | A lookup fails from a container; `journalctl -k \| grep bv-guard-drop` shows a drop with `DPT=53` | `BV_ALLOWED_DNS` does not name the resolver Docker forwards to. Redo 9.3 steps 1–2, fix `guard.sh`, `./guard.sh apply`. |
-| `WARN: BV_ALLOWED_DNS is empty…` every minute | The caller ran `egress-guard.sh` instead of `guard.sh`, or the wrapper does not set the list. |
+| `WARN: BV_ALLOWED_DNS is empty…` every minute | The caller ran `egress-guard.sh` instead of `guard.sh`, or the wrapper does not set the list. On a host whose Docker resolves in the host's namespace, the list may be deliberately empty. See 9.3 step 2 for the value that quiets the WARN. |
 | `WARN: project <name> has no networks…` | The stack is down, or `BV_PROJECTS` has a wrong name. Nothing of that project is guarded. |
 | `ERROR: <path> must be owned by root…` / `must not be group- or world-writable…` | A directory on the script's path fails the location rules (9.1). Move the scripts rather than changing a shared parent. |
 | `ERROR: <dir> is inside <src>, which is mounted into a container…` / `…is itself mounted into a container…` | Something mounts the scripts or a parent directory (9.1). |
@@ -897,7 +914,8 @@ Never hand-edit the guard's rules, because cron undoes the edit within a minute.
   run `./guard.sh apply` right after recreating the stack. Optionally, pin
   each network's bridge name in compose
   (`driver_opts: com.docker.network.bridge.name: <name>`, at most 15
-  characters). The existing rules then match the recreated bridge
+  characters from `A-Z a-z 0-9 _ . -`; any other name makes every guard run
+  exit 2). The existing rules then match the recreated bridge
   immediately, unless a cron run fell while the stack was down. If the
   subnet changed, allowed traffic is dropped, not let through, until the next
   run.
@@ -923,8 +941,9 @@ Never hand-edit the guard's rules, because cron undoes the edit within a minute.
 The `Host guard` CI workflow
 ([`.github/workflows/host-guard.yml`](.github/workflows/host-guard.yml)) runs
 [`scripts/host/test-egress-guard.sh`](scripts/host/test-egress-guard.sh)
-against real iptables and real containers on every push and PR that touches
-`scripts/host/`, plus weekly. To run it locally without touching your
+against real iptables and real containers on pushes to `main` and PRs into
+`main` that touch `scripts/host/` or the workflow itself, weekly, and on
+demand (a feature branch without a PR is not tested). To run it locally without touching your
 machine's firewall, use a throwaway Docker-in-Docker "guard lab". It needs
 internet access, and a full run takes about 15 minutes:
 
