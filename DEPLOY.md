@@ -943,9 +943,10 @@ The `Host guard` CI workflow
 [`scripts/host/test-egress-guard.sh`](scripts/host/test-egress-guard.sh)
 against real iptables and real containers on pushes to `main` and PRs into
 `main` that touch `scripts/host/` or the workflow itself, weekly, and on
-demand (a feature branch without a PR is not tested). To run it locally without touching your
-machine's firewall, use a throwaway Docker-in-Docker "guard lab". It needs
-internet access, and a full run takes about 15 minutes:
+demand (a feature branch without a PR is tested only if you dispatch the
+workflow on it). To run it locally without touching your machine's firewall,
+use a throwaway Docker-in-Docker "guard lab". It needs internet access, and a
+full run takes about 15 minutes:
 
 ```bash
 docker run -d --privileged --name guard-lab docker:27-dind
