@@ -15,6 +15,9 @@
 #                      packets or LAN stand-in unreachable even before the guard,
 #                      a legacy iptables table already present) is a FAIL, not a
 #                      SKIPPED line. CI sets it, so coverage cannot silently shrink.
+#   BV_TEST_DNS=ADDR   run the DNS checks through ADDR set with --dns (what compose
+#                      "dns:" does), as on a host whose Docker resolves in the
+#                      host's namespace; lets the lab try the path CI takes.
 set -uo pipefail   # no -e: every assertion reports, the summary decides
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -194,14 +197,38 @@ if command -v ip6tables >/dev/null && ip6tables -w -S DOCKER-USER >/dev/null 2>&
   V6=1
 fi
 
-docker run -d --name bvt-int     --network bvtest_internal   "$PROBE_IMAGE" sleep 3600 >/dev/null
+# Which resolver the DNS checks go through. Docker records where its embedded
+# DNS forwards in each container's resolv.conf ("# ExtServers: [...]"). A bare
+# address is queried from inside the container's namespace, so it crosses the
+# guard: on the NAS that is the LAN router, a private address the guard drops
+# unless it is on the allowed-DNS list. An entry written "host(ADDR)" (a
+# loopback stub such as systemd-resolved, as on CI runners) is queried from
+# the host's namespace and never crosses the guard. Then the checks use what a
+# service with compose "dns:" gets: an explicit public resolver, queried from
+# inside the container.
+EXT_DNS=$(docker run --rm --network bvtest_legacy "$PROBE_IMAGE" grep '^# ExtServers:' /etc/resolv.conf 2>/dev/null || true)
+HOST_DNS=$(sed -E 's/host\([^)]*\)//g' <<<"$EXT_DNS" \
+  | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | sort -u | tr '\n' ' ' | sed 's/ $//')
+DNS_OPT=()
+DNS_MODE="Docker's own upstream"
+if [ -n "${BV_TEST_DNS:-}" ]; then
+  HOST_DNS=$BV_TEST_DNS
+  DNS_OPT=(--dns "$HOST_DNS")
+  DNS_MODE="set with --dns: BV_TEST_DNS"
+elif [ -z "$HOST_DNS" ]; then
+  HOST_DNS=1.1.1.1
+  DNS_OPT=(--dns "$HOST_DNS")
+  DNS_MODE="set with --dns: Docker resolves in the host's namespace here"
+fi
+
+docker run -d --name bvt-int     --network bvtest_internal   "${DNS_OPT[@]}" "$PROBE_IMAGE" sleep 3600 >/dev/null
 docker run -d --name bvt-int-peer --network bvtest_internal  "$PY_IMAGE" python -m http.server 8000 >/dev/null
-docker run -d --name bvt-egress  --network bvtest_egress_out "$PROBE_IMAGE" sleep 3600 >/dev/null
-docker run -d --name bvt-tunnel  --network bvtest_tunnel_out "$PROBE_IMAGE" sleep 3600 >/dev/null
-docker run -d --name bvt-legacy  --network bvtest_legacy     "$PROBE_IMAGE" sleep 3600 >/dev/null
+docker run -d --name bvt-egress  --network bvtest_egress_out "${DNS_OPT[@]}" "$PROBE_IMAGE" sleep 3600 >/dev/null
+docker run -d --name bvt-tunnel  --network bvtest_tunnel_out "${DNS_OPT[@]}" "$PROBE_IMAGE" sleep 3600 >/dev/null
+docker run -d --name bvt-legacy  --network bvtest_legacy     "${DNS_OPT[@]}" "$PROBE_IMAGE" sleep 3600 >/dev/null
 docker run -d --name bvt-neighbor --network bvtest_neighbor -p "$NEIGHBOR_PORT:8000" "$PY_IMAGE" python -m http.server 8000 >/dev/null
 docker run -d --name bvt-lan     --network bvtest_lan -p "$LAN_PORT:8000" "$PY_IMAGE" python -m http.server 8000 >/dev/null
-docker run -d --name bvt-lan-probe --network bvtest_lan     "$PROBE_IMAGE" sleep 3600 >/dev/null
+docker run -d --name bvt-lan-probe --network bvtest_lan     "${DNS_OPT[@]}" "$PROBE_IMAGE" sleep 3600 >/dev/null
 [ "$V6" -eq 1 ] && docker run -d --name bvt-v6 --network bvtest_v6 "$PROBE_IMAGE" sleep 3600 >/dev/null
 # Sends raw packets with a forged source address (the default NET_RAW allows it).
 docker run -d --name bvt-spoof  --network bvtest_egress_out "$PY_IMAGE" sleep 3600 >/dev/null
@@ -291,22 +318,9 @@ GW_TUNNEL=$(gateway_of bvtest_tunnel_out)
 GW_INT=$(gateway_of bvtest_internal)
 info "host=$HOST neighbor=$NEIGHBOR_IP peer=$PEER_IP v6=$V6 onlink6=$ONLINK6"
 
-# The resolvers Docker's embedded DNS forwards to: Docker records them in each
-# container's resolv.conf ("# ExtServers: [...]"). Fallback: the host's own
-# resolv.conf, minus loopback stubs. On the NAS this is the LAN router: a
-# private address, which the guard drops unless it is on the allowed-DNS list.
-# An entry written "host(ADDR)" is queried from the host's own namespace (a
-# loopback stub); that traffic never crosses the guard, so it is not counted.
-ext=$(docker exec bvt-legacy grep '^# ExtServers:' /etc/resolv.conf 2>/dev/null || true)
-if [ -n "$ext" ]; then
-  HOST_DNS=$(sed -E 's/host\([^)]*\)//g' <<<"$ext" \
-    | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | sort -u | tr '\n' ' ' | sed 's/ $//')
-else
-  HOST_DNS=$(awk '$1 == "nameserver" && $2 !~ /^127\./ && $2 !~ /:/ { print $2 }' /etc/resolv.conf | tr '\n' ' ' | sed 's/ $//')
-fi
-info "Docker's record of its upstream resolvers: ${ext:-none}"
+info "Docker's record of its upstream resolvers: ${EXT_DNS:-none}"
 if [[ " $HOST_DNS " == *" $OTHER_DNS "* ]]; then OTHER_DNS=149.112.112.112; fi
-info "resolvers Docker forwards to: ${HOST_DNS:-NONE}; non-listed resolver: $OTHER_DNS"
+info "resolver the DNS checks go through: ${HOST_DNS:-NONE} ($DNS_MODE); non-listed resolver: $OTHER_DNS"
 [ -n "$HOST_DNS" ] || fail "could not find the resolver Docker forwards to; the DNS checks cannot mean anything"
 GUARD_DNS=$HOST_DNS
 
