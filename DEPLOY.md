@@ -585,3 +585,370 @@ Redeploy, then verify:
 
 - **Zero-downtime:** two `web` replicas or a blue/green swap behind the tunnel,
   removing the recreate blip on ✅ updates.
+
+---
+
+## 9. Host guard (keep containers off the LAN)
+
+The app's containers face the internet through the tunnel. If one of them is
+ever compromised, the attacker's next target is whatever network it sits on:
+the NAS's admin UI and file shares, other apps' dashboards, the router, every
+device on the LAN. Docker does not block that by default. A container on an
+ordinary bridge network can connect to any address the host can reach.
+
+[`scripts/host/egress-guard.sh`](scripts/host/egress-guard.sh) closes that path
+from the host kernel, where no container can see or change it. For every
+network of the guarded compose project(s) it:
+
+- drops anything a container sends to private and special address ranges (your
+  LAN, other Docker networks, CGNAT/VPN ranges, link-local, loopback,
+  multicast) and to every prefix the host reaches without a gateway (its own
+  LANs, whatever their addresses);
+- drops anything a container sends to the host itself;
+- allows DNS (udp/tcp 53) only to the resolvers you list in `BV_ALLOWED_DNS`,
+  and only from networks that are allowed out;
+- allows the rest by **role**, which comes from the network's name:
+
+  | Role | Network | Allowed out (to public addresses) |
+  |---|---|---|
+  | `internal` | Docker `internal: true` | nothing |
+  | `lan` | name ends in `_lan` (exists only to publish a LAN port) | nothing |
+  | `tunnel` | name ends in `_tunnel_out` | tcp 443/7844, udp 7844 (Cloudflare's tunnel ports) |
+  | `egress` | name ends in `_egress_out` | tcp 443 |
+  | `transitional` | any other non-internal network | anything (prints a WARN) |
+
+- keeps replies to connections that came *in* working, along with traffic
+  between containers on the same network and IPv6 neighbour discovery with the
+  host.
+
+Rules match the network's bridge interface, so a forged or link-local source
+address does not get around them. Anything a role allows is allowed only from
+that network's own subnets. `BV_ROLE_OVERRIDES="<network>=<role> ..."` overrides
+the name-based role.
+
+The guard never edits Docker's rules. It owns three chains (`BV-GUARD`,
+`BV-GUARD-IN`, `BV-LOG-DROP`) and one jump each from `DOCKER-USER` and `INPUT`
+(for IPv6 it jumps from `FORWARD` when Docker does not manage ip6tables).
+[`scripts/host/probe-isolation.sh`](scripts/host/probe-isolation.sh) proves
+the result from throwaway containers. The header comment of each script is the
+authoritative description of its interface.
+
+Today's stack has no `_tunnel_out`/`_egress_out` networks, so its networks are
+`transitional`. They are still kept off the LAN and the host, but they may
+reach any public address. The `tunnel`/`egress` roles take effect once the
+compose file uses those network names.
+
+### 9.1 Choose where the scripts live
+
+The guard runs as root, from cron. If it lived anywhere a container could
+write, a compromised container could rewrite it and get root on the host at
+the next run. The script checks its own location on every `apply` and
+`check`, and exits 2 (fails closed, see 9.6) unless **all** of these hold:
+
+- the script, its directory, **and every parent directory up to `/`** are
+  owned by root and are not group- or world-writable. The one exception is a
+  root-owned *sticky* parent, such as `/tmp`, where only root can rename
+  root's entries. That exception never applies to the script's own directory;
+- no container (running or stopped) mounts the script, its directory, or any
+  directory above it. That includes named volumes that are binds in disguise
+  (the `local` driver with `o=bind`, `device=/some/host/path`) and volume
+  plugins given host paths.
+
+On TrueNAS SCALE:
+
+1. **Create a dedicated dataset**, e.g. `<pool>/configs/host-guard`, with the
+   **Generic** dataset preset. The Apps and SMB presets often give a dataset
+   mode 770/775 plus an ACL, so every run exits 2.
+2. **Check every directory on the path**, not just the new one:
+   ```bash
+   for d in /mnt /mnt/<pool> /mnt/<pool>/configs /mnt/<pool>/configs/host-guard; do
+     stat -c '%U %a %n' "$d"
+     getfacl -p "$d" 2>/dev/null | grep -v '^#'
+   done
+   zfs get -o name,value acltype <pool> <pool>/configs <pool>/configs/host-guard
+   ```
+   Each line must show owner `root` and a mode without group/world write
+   (`755` or `700`, say). **The guard reads mode bits only, so this ACL check
+   is the only thing that catches an ACL granting write.** For a dataset with
+   a POSIX ACL (`acltype` `posix`), `getfacl` must list no entry with `w`
+   beyond `user::`. For an NFSv4 ACL (`acltype` `nfsv4`, typical of the SMB
+   preset), `getfacl` cannot read the ACL. Look at the dataset's
+   **Permissions** card in the UI, or run `nfs4xdr_getfacl <dir>`, and make
+   sure only root can write.
+3. **If a parent fails, choose another location instead of changing the
+   parent.** Other apps may depend on that parent's permissions. A dataset
+   directly under the pool root (`/mnt/<pool>/host-guard`) has the shortest
+   path to check.
+4. **Confirm nothing mounts it.** Under **Apps**, check each app's storage,
+   and check every Dockge stack's `volumes:`. Nothing may mount the
+   `host-guard` dataset, `configs`, or the pool root.
+
+### 9.2 Install
+
+1. **Copy the scripts in at the commit you are deploying and lock them down**
+   (as root):
+   ```bash
+   cd /mnt/<pool>/configs/host-guard
+   for f in egress-guard.sh probe-isolation.sh; do
+     curl -fsSLo "$f" "https://raw.githubusercontent.com/toastedcoffee/BottleVault/<commit-sha>/scripts/host/$f"
+   done
+   sha256sum egress-guard.sh probe-isolation.sh
+   chown root:root . egress-guard.sh probe-isolation.sh
+   chmod 0700 . egress-guard.sh probe-isolation.sh
+   ```
+   Compare the checksums with the same files from a checkout of that commit:
+   `git show <commit-sha>:scripts/host/egress-guard.sh | sha256sum` (and the
+   same for the probe).
+
+2. **Find the resolver(s) Docker forwards to** (see 9.3 for the details):
+   ```bash
+   grep '^nameserver' /etc/resolv.conf
+   docker exec <any running container of the stack> grep ExtServers /etc/resolv.conf
+   ```
+
+3. **Write the wrapper.** Every caller (Post Init, cron, and you, by hand) runs
+   the wrapper, **never `egress-guard.sh` directly**. Only the wrapper carries
+   `BV_PROJECTS` and `BV_ALLOWED_DNS`. A direct run guards only the default
+   project, with no DNS list: it rewrites the live rules to that narrower
+   policy, cuts DNS for every guarded network, and drops any extra project
+   from the guard until the wrapper runs again. Create `guard.sh` in the same
+   directory:
+   ```bash
+   #!/usr/bin/env bash
+   export BV_PROJECTS="bottlevault"           # space-separated compose project names
+   export BV_ALLOWED_DNS="192.0.2.1"          # the resolver(s) from step 2, see 9.3
+   exec "$(dirname "$(readlink -f "$0")")/egress-guard.sh" "$@"
+   ```
+   ```bash
+   chown root:root guard.sh && chmod 0700 guard.sh
+   ```
+   The guard checks its own file, directory and parents, but **not the
+   wrapper's file**. Keep the wrapper in the same directory and set its owner
+   and mode yourself. To guard a second stack on the same host, list it as
+   well: `BV_PROJECTS="bottlevault other-stack"`.
+
+4. **Dry run.** `./guard.sh roles` prints one `<network> <role>` line per
+   guarded network. A project with no networks prints a WARN: the stack is
+   down, or a name in `BV_PROJECTS` is wrong, and nothing of it is guarded.
+
+5. **Apply once by hand:**
+   ```bash
+   ./guard.sh apply
+   ./guard.sh check; echo "exit=$?"
+   ```
+   The first run prints `repaired …` lines for each chain and jump. `check`
+   must then print `rules in place` and `exit=0`.
+
+6. **Run at boot:** System → Advanced Settings → Init/Shutdown Scripts → Add.
+   Type *Command*, When *Post Init*, Timeout `330`, Command
+   `/mnt/<pool>/configs/host-guard/guard.sh apply --wait-for-docker 300`.
+
+7. **Self-heal every minute:** System → Advanced Settings → Cron Jobs → Add.
+   Command `/mnt/<pool>/configs/host-guard/guard.sh apply --quiet`, Run As
+   `root`, schedule every minute (`* * * * *`). Leave **both** "Hide Standard
+   Output" and "Hide Standard Error" **unchecked**. TrueNAS emails a cron
+   job's output, and that email is the alert. `--quiet` prints nothing when
+   the rules are already correct. It prints `repaired …` on stdout when it had
+   to fix drift, and it always prints errors and the two WARNs that mean
+   something is unguarded or broken (an empty `BV_ALLOWED_DNS`, a project with
+   no networks) on stderr. An alert email address must be configured
+   for any of this to arrive.
+
+### 9.3 `BV_ALLOWED_DNS`: which resolvers containers may query
+
+Docker's embedded DNS server (127.0.0.11 inside each container) forwards
+internet lookups to the host's configured resolvers. On most hosts it sends
+them **from inside the container's network namespace**, so they leave through
+the guard like any other packet. The router is a private address, so without
+an allowance the guard drops those lookups. The API's barcode-provider lookups
+then fail, and after the hardened-stack upgrade so would the tunnel and the
+egress proxy.
+
+`BV_ALLOWED_DNS` is a space-separated list of **single** IPv4/IPv6 addresses.
+The guard opens udp/tcp 53 to exactly those addresses, only from `tunnel`,
+`egress` and `transitional` networks, and only from each network's own
+subnets. It refuses (exit 2) any entry that could not be a resolver reached
+through a bridge, or that would open more than one host:
+
+| Refused | Why |
+|---|---|
+| A prefix (`192.0.2.0/24`), a port (`192.0.2.1:53`), a hostname | A prefix would open DNS to a whole range, and a `/8` would be the LAN. Ports and names are not addresses. |
+| Unspecified, loopback, link-local, multicast, reserved (`0.0.0.0/8`, `127.0.0.0/8` such as a `127.0.0.53` stub, `169.254.0.0/16`, `224.0.0.0` and up, `::`, `::1`, `fe80::/10`, `ff00::/8`) | Traffic to these never passes through the host's forwarding path, so the allowance would do nothing and lookups would still fail. |
+| An address of the host itself | The guard never opens the host to containers. |
+
+**Empty or unset fails closed.** No resolver is allowed, so `tunnel` and
+`egress` networks cannot resolve internet names, and `transitional` ones can
+resolve them only through a public resolver. Every run, `--quiet` or not,
+prints a WARN naming the affected networks, so cron mails it every minute.
+
+**Finding the right value:**
+
+1. `grep '^nameserver' /etc/resolv.conf` on the host lists the candidates. On
+   TrueNAS these are the nameservers under Network → Global Configuration.
+   List **all** of them: Docker may use any of them.
+2. Confirm what Docker actually does by reading the comment Docker writes into
+   a container's resolv.conf:
+   `docker exec <container> grep ExtServers /etc/resolv.conf`.
+   - `# ExtServers: [192.0.2.1]` (bare addresses): Docker forwards from the
+     container's namespace. Those lookups cross the guard, and
+     `BV_ALLOWED_DNS` must name exactly these addresses.
+   - `# ExtServers: [host(127.0.0.53)]`: the host's resolv.conf holds only a
+     loopback stub (systemd-resolved), so Docker resolves **in the host's
+     namespace**. Container lookups never cross the guard and work whatever
+     the list says. On such a host `BV_ALLOWED_DNS` affects only services with
+     an explicit compose `dns:`, whose lookups do leave from the container.
+     Set it to those `dns:` addresses.
+3. Confirm the lookup works after `apply`: from a container on an
+   `egress`/`tunnel`/`transitional` network,
+   `docker exec <container> getent hosts example.com` must print an address.
+   If it fails, see 9.6.
+
+**After the hardened-stack upgrade** (the upgrade gets its own section when it
+ships), the `tunnel` and `egress` networks set compose `dns:` from `BV_DNS_1` /
+`BV_DNS_2`. In that same window, set `BV_ALLOWED_DNS` to the same two
+addresses (for example `"1.1.1.1 9.9.9.9"`) and run `./guard.sh apply`, so no
+private destination is allowed any more. Rolling the upgrade back means
+switching the list back to the router as well.
+
+### 9.4 Verify
+
+```bash
+cd /mnt/<pool>/configs/host-guard
+./probe-isolation.sh --target 192.0.2.10:443 --target 192.0.2.10:22 --target 192.0.2.1:80 --target '[2001:db8::10]:443'
+```
+
+Replace the documentation addresses above with your NAS, router and LAN
+devices. Add every LAN service you care about as a `--target` (an IPv4
+address, or a bracketed IPv6 one; names are refused). Every network is also
+probed at its own gateway address on ports 22, 80, 443, 445, 2049, 2375 and
+5001. Run it once per guarded project, adding `--project other-stack` for the
+others. The probe reads network roles through `egress-guard.sh` next to it,
+so if your wrapper sets `BV_ROLE_OVERRIDES`, export the same value before you
+run the probe.
+
+| Row | Meaning |
+|---|---|
+| `PASS` | The host reached the target and the container did not. |
+| `FAIL` | The container reached a target it must not, or could not reach the public target it must. |
+| `N/A` | Neither reached it, so nothing was proven. Fine for a service that is not listening. |
+| `ERROR` | The probe itself failed. |
+
+The `(public)` row (default `1.1.1.1:443`, change it with `--public`) must
+read `PASS`: open from `egress`/`tunnel`/`transitional` networks and blocked
+from `internal`/`lan` ones. Exit codes: `0` every expectation held, `1` at
+least one did not, `2` a usage or tool error (including `ERROR` rows, and a
+`--public` the host itself cannot reach).
+
+Do not use port 53 on a resolver in `BV_ALLOWED_DNS` as a `--target`. It is
+open from networks that are allowed out by design, so it reads `FAIL`.
+
+Blocked attempts are logged by the kernel (rate-limited to about 10 a minute):
+`journalctl -k | grep bv-guard-drop`.
+
+Re-verify after a reboot, after restarting Docker, and after TrueNAS updates.
+
+### 9.5 Update and uninstall
+
+- **Update:** copy the new scripts in at the new commit (9.2 step 1, including
+  the checksum comparison, `chown` and `chmod`), then `./guard.sh apply` and
+  `./guard.sh check`. Re-read the scripts' header comments, and this section,
+  for interface changes.
+- **Change the DNS list or the projects:** edit `guard.sh`, then
+  `./guard.sh apply`.
+- **Uninstall:** delete the Init/Shutdown entry and the cron job **first**
+  (otherwise cron re-applies within a minute), then `./guard.sh remove`.
+  `remove` deletes every chain and jump the guard created, whatever the
+  project list says.
+
+### 9.6 Troubleshooting
+
+**Exit codes.** `check`: `0` rules current, `1` drift (it names each drifted
+chain or jump), `2` error. `apply`: `0` done, `2` error. On any error the
+guard changes nothing: the rules from the last good run stay in force, but
+new or recreated networks are not picked up until the error is fixed. A
+persistent error is mailed by cron every minute.
+
+| Symptom | Cause and fix |
+|---|---|
+| A lookup fails from a container; `journalctl -k \| grep bv-guard-drop` shows a drop with `DPT=53` | `BV_ALLOWED_DNS` does not name the resolver Docker forwards to. Redo 9.3 steps 1–2, fix `guard.sh`, `./guard.sh apply`. |
+| `WARN: BV_ALLOWED_DNS is empty…` every minute | The caller ran `egress-guard.sh` instead of `guard.sh`, or the wrapper does not set the list. |
+| `WARN: project <name> has no networks…` | The stack is down, or `BV_PROJECTS` has a wrong name. Nothing of that project is guarded. |
+| `ERROR: <path> must be owned by root…` / `must not be group- or world-writable…` | A directory on the script's path fails the location rules (9.1). Move the scripts rather than changing a shared parent. |
+| `ERROR: <dir> is inside <src>, which is mounted into a container…` / `…is itself mounted into a container…` | Something mounts the scripts or a parent directory (9.1). |
+| `ERROR: could not inspect volume(s) …` on every run | One volume plugin is unavailable, so the location check cannot see where its volumes point, and the guard fails closed. Remove the stale volume or the container using it, or bring the plugin back. |
+| `ERROR: IPv4 FORWARD does not jump to DOCKER-USER…` | Docker's own chains are damaged. That jump is Docker's, not the guard's to repair. `systemctl restart docker`, then `./guard.sh apply`. |
+| `ERROR: Docker's rules are in the legacy iptables backend…` | The host's `iptables` command and Docker disagree about which backend is live. The guard refuses rather than guard the wrong one. |
+| `ERROR: network <name> uses the '<driver>' driver…` | Only `bridge` networks can be guarded. macvlan/ipvlan/overlay networks in a guarded project make every run fail. |
+| `ERROR: another egress-guard run still holds the lock…` | Two runs overlapped for over 30 s (a slow Docker). It clears on its own. If it persists, look for a hung `egress-guard.sh` process. |
+| `repaired …` mails | Something changed the guard's rules (a manual `iptables` edit, or a Docker restart that rebuilt its chains), and cron put them back. Repeated mails mean something keeps changing them. Find out what before ignoring them. |
+| Drops logged to `ff02::…` addresses on an IPv6 network | IPv6 router solicitations and multicast-listener reports to the host. The guard allows only neighbour discovery to the host, so these are dropped by design and are harmless. |
+
+**An app on a guarded network needs a new destination.** That is a policy
+change. Make it in the compose file: put the service on the network whose role
+fits, and after the hardened-stack upgrade use the egress proxy's allowlist.
+Never hand-edit the guard's rules, because cron undoes the edit within a minute.
+
+### 9.7 Limits (what the guard does not cover)
+
+- **Up to 60 s unguarded after a network is recreated.** `docker compose down`
+  followed by `up` (or anything else that deletes and recreates a network)
+  gives the network a new bridge name, and its containers run without matching
+  rules until the next cron run. This window is accepted. To close it by hand,
+  run `./guard.sh apply` right after recreating the stack. Optionally, pin
+  each network's bridge name in compose
+  (`driver_opts: com.docker.network.bridge.name: <name>`, at most 15
+  characters). The existing rules then match the recreated bridge
+  immediately, unless a cron run fell while the stack was down. If the
+  subnet changed, allowed traffic is dropped, not let through, until the next
+  run.
+- **On-link drops cover only routes without a gateway.** The guard adds every
+  prefix the host reaches directly to its drop list, which is how a LAN
+  numbered from public or global IPv6 space is covered. A second LAN segment
+  that the host reaches **via** the router is not covered unless it falls in
+  one of the private or special ranges. An IoT VLAN with global IPv6
+  addresses is the typical case. Private IPv4 VLANs (`10/8`, `172.16/12`,
+  `192.168/16`) are always covered.
+- **Only containers on guarded networks.** A container with
+  `network_mode: host`, or one only on a network outside `BV_PROJECTS`, is not
+  guarded at all.
+- **The Docker socket is out of scope.** A container that mounts
+  `/var/run/docker.sock` can do anything root on the host can, guard or not.
+- **`transitional` networks reach every public address on every port**,
+  port 53 to any public resolver included, whatever `BV_ALLOWED_DNS` says.
+- **Inbound traffic is not its job.** Published ports, and the LAN reaching
+  into containers, are governed by the compose file, not the guard.
+
+### 9.8 Testing changes to the guard
+
+The `Host guard` CI workflow
+([`.github/workflows/host-guard.yml`](.github/workflows/host-guard.yml)) runs
+[`scripts/host/test-egress-guard.sh`](scripts/host/test-egress-guard.sh)
+against real iptables and real containers on every push and PR that touches
+`scripts/host/`, plus weekly. To run it locally without touching your
+machine's firewall, use a throwaway Docker-in-Docker "guard lab". It needs
+internet access, and a full run takes about 15 minutes:
+
+```bash
+docker run -d --privileged --name guard-lab docker:27-dind
+docker exec guard-lab sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done; apk add --no-cache bash python3 coreutils iproute2 >/dev/null && echo LAB-READY'
+docker cp scripts/host guard-lab:/guard
+docker exec -e BV_REQUIRE_FULL=1 guard-lab bash /guard/test-egress-guard.sh
+docker rm -f guard-lab
+```
+
+From Git Bash on Windows, prefix each `docker exec`/`docker cp` line with
+`MSYS_NO_PATHCONV=1`, or the container paths are rewritten into Windows paths.
+To re-run after an edit, `docker exec guard-lab rm -rf /guard` before the
+`docker cp`.
+
+Harness switches:
+
+- `BV_REQUIRE_FULL=1` turns any check this host cannot run (no IPv6, forged
+  packets or the stand-in LAN host unreachable even before the guard, a legacy
+  iptables table already present) into a `FAIL` instead of a `SKIPPED` line.
+  CI always sets it, so coverage cannot shrink silently. Set it locally too.
+- `BV_TEST_DNS=<address>` (e.g. `1.1.1.1`) runs the DNS checks through that
+  resolver set with `--dns`, as compose `dns:` does. That is the path a host
+  whose Docker resolves in the host's namespace takes (9.3), and the one the
+  CI runner takes. Run the lab once without it and once with it, so both DNS
+  paths are tested.
