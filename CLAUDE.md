@@ -8,6 +8,32 @@ is no Android/Kotlin-mobile app in this repo. If a spec, ticket, or your own
 memory assumes a different platform, verify against the actual current repo
 structure (`frontend/`, `backend/`) before implementing anything.
 
+## Commands
+
+```bash
+# Backend (cd backend) — dev profile: port 8085, in-memory H2, no containers
+./gradlew bootRun --args='--spring.profiles.active=dev'
+./gradlew test --rerun-tasks        # see "Testing before shipping" for why --rerun-tasks
+
+# Frontend (cd frontend; Node 26) — Vite dev server proxies /api to localhost:$API_PORT (default 8085)
+npm run dev
+npm run type-check && npm run lint && npm run test && npm run build   # = the CI frontend steps
+
+# Real Postgres instead of H2: start the DB, then run bootRun WITHOUT the dev
+# profile, with DATABASE_URL, DATABASE_USERNAME, DATABASE_PASSWORD and
+# JWT_SECRET set (application.yml has no defaults for them; see README)
+docker compose -f docker-compose.dev.yml up -d
+```
+
+## Repo map (beyond `frontend/` and `backend/`)
+
+- `scripts/host/` — iptables egress guard that keeps the stack's networks off the
+  LAN/host; documented in DEPLOY.md §9, exercised by `.github/workflows/host-guard.yml`.
+- `edge/maintenance-worker/` — Cloudflare Worker (own README).
+- `scripts/` — `add-spdx-headers.sh`, migration-gate helpers, and ops scripts
+  (`pg-snapshot.sh`, `reset-password.sh`, `delete-user.sh`).
+- `.github/workflows/` — `ci.yml`, `migration-gate.yml`, `host-guard.yml`.
+
 ## Privacy
 
 This is a **public repo**. The maintainer's real first name must not appear
@@ -114,9 +140,10 @@ adds the header), render via `URL.createObjectURL`, revoke on unmount. See
 ## Upload size limits
 
 Two caps must stay aligned, or nginx 413s a request the backend would accept:
-- `application.yml` → `spring.servlet.multipart.max-file-size` (backend cap)
-- `frontend/nginx.conf` → `client_max_body_size` on `/api/` (proxy cap, keep
-  ~1 MB above backend cap for multipart overhead)
+- `application.yml` → `spring.servlet.multipart.max-request-size` (backend cap;
+  `max-file-size` sits ~1 MB below it for multipart overhead)
+- `frontend/nginx.conf` → `client_max_body_size` on `/api/` (proxy cap — set equal
+  to `max-request-size`, currently 6m)
 
 ## Deployment model (TrueNAS / Dockge)
 
@@ -129,8 +156,10 @@ from `main`.
 
 For updating a running instance safely — which changes need a backup, which
 cause downtime, and the backup/restore commands — see [DEPLOY.md](DEPLOY.md).
-A change is backup-required if and only if it adds a file under
-`backend/src/main/resources/db/migration/`.
+A change is backup-required if and only if it adds a Flyway migration: a file
+under `backend/src/main/resources/db/migration/` (SQL) **or**
+`backend/src/main/kotlin/db/migration/` (JVM migrations — V8 lives there, and a
+check of only the `resources/` path misses it).
 
 **Both images build from the repo root**, with an explicit `-f` — not from
 `./backend` or `./frontend`:
