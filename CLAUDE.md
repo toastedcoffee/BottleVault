@@ -15,11 +15,13 @@ structure (`frontend/`, `backend/`) before implementing anything.
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 ./gradlew test --rerun-tasks        # see "Testing before shipping" for why --rerun-tasks
 
-# Frontend (cd frontend; Node 26) — Vite dev server proxies /api to localhost:8085
+# Frontend (cd frontend; Node 26) — Vite dev server proxies /api to localhost:$API_PORT (default 8085)
 npm run dev
 npm run type-check && npm run lint && npm run test && npm run build   # = the CI frontend steps
 
-# Real Postgres for local dev instead of H2
+# Real Postgres instead of H2: start the DB, then run bootRun WITHOUT the dev
+# profile, with DATABASE_URL, DATABASE_USERNAME, DATABASE_PASSWORD and
+# JWT_SECRET set (application.yml has no defaults for them; see README)
 docker compose -f docker-compose.dev.yml up -d
 ```
 
