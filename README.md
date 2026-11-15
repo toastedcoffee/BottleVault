@@ -82,8 +82,8 @@ Pre-built images are published to GitHub Container Registry on every merge to ma
    - `PORT` — (optional, default `80`)
 4. **Create the data directories** from TrueNAS shell:
    ```bash
-   mkdir -p /mnt/AppPool/configs/stacks/bottlevault/data/postgres
-   mkdir -p /mnt/AppPool/configs/stacks/bottlevault/data/uploads
+   mkdir -p /mnt/<pool>/configs/stacks/bottlevault/data/postgres
+   mkdir -p /mnt/<pool>/configs/stacks/bottlevault/data/uploads
    ```
    The `uploads/` directory persists bottle photos; back it up alongside `postgres/`.
 5. **Deploy** the stack from Dockge
