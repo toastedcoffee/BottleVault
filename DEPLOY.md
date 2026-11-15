@@ -367,7 +367,7 @@ migration has since run — restore the matching data snapshot too.
 
 | Thing | Value |
 |---|---|
-| DB container | `bottlevault-db` (image `${POSTGRES_IMAGE:-postgres:16-alpine}` — the default is a floating minor tag, so set `POSTGRES_IMAGE` to pin it) |
+| DB container | `bottlevault-db` (image `${POSTGRES_IMAGE:-postgres:16-alpine}` — the default tracks the latest 16.x, so set `POSTGRES_IMAGE` to pin it) |
 | DB name / user | `bottlevault` / `bottlevault` |
 | API container | `bottlevault-api` (`ghcr.io/toastedcoffee/bottlevault-api:latest`) |
 | Web container | `bottlevault-web` (`ghcr.io/toastedcoffee/bottlevault-web:latest`) |

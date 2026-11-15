@@ -80,7 +80,8 @@ Pre-built images are published to GitHub Container Registry on every merge to ma
      (e.g. `https://app.example.com`); not needed for plain LAN access
    - `REGISTRATION_ENABLED` — `true` (change to `false` after creating your account)
    - `PORT` — (optional, default `80`)
-4. **Create the data directories** from TrueNAS shell:
+4. **Create the data directories** from TrueNAS shell (replace `<pool>` with
+   the name of your pool):
    ```bash
    mkdir -p /mnt/<pool>/configs/stacks/bottlevault/data/postgres
    mkdir -p /mnt/<pool>/configs/stacks/bottlevault/data/uploads
