@@ -224,13 +224,16 @@ host port directly, it can be the client's own address.
 
 ```bash
 cd /mnt/<pool>/configs/stacks/bottlevault
-# Pull only the app images so the pinned postgres:16-alpine container isn't churned.
+# Pull only the app images so the postgres container isn't churned.
 docker compose -f docker-compose.prod.yml pull backend frontend
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Startup ordering is handled by the compose healthchecks: `backend` waits for
-Postgres healthy, `frontend` waits for `backend` healthy.
+Startup ordering is handled by `depends_on`: `backend` waits for Postgres to be
+healthy, and `frontend` waits only for `backend` to have *started* (not to be
+healthy) — nginx serves immediately and returns 502 on `/api/` until the API
+passes its readiness probe. The `tunnel` service then waits for `frontend` to be
+healthy.
 
 **Verify after updating:**
 1. Hard-reload the app (users must reload — an open tab keeps running the old
@@ -364,7 +367,7 @@ migration has since run — restore the matching data snapshot too.
 
 | Thing | Value |
 |---|---|
-| DB container | `bottlevault-db` (image `postgres:16-alpine`, pinned) |
+| DB container | `bottlevault-db` (image `${POSTGRES_IMAGE:-postgres:16-alpine}` — the default tracks the latest 16.x, so set `POSTGRES_IMAGE` to pin it) |
 | DB name / user | `bottlevault` / `bottlevault` |
 | API container | `bottlevault-api` (`ghcr.io/toastedcoffee/bottlevault-api:latest`) |
 | Web container | `bottlevault-web` (`ghcr.io/toastedcoffee/bottlevault-web:latest`) |
