@@ -147,4 +147,38 @@ apiClient.interceptors.response.use(
   }
 );
 
+/**
+ * A sentence for the user about a failed API call. Prefers the server's own
+ * message; knows the statuses the server and nginx use for limits, where the
+ * body may be an HTML page rather than JSON.
+ */
+export function describeApiError(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  if (!axios.isAxiosError(err) || !err.response) {
+    return err instanceof Error && err.message ? err.message : fallback;
+  }
+  const { status, data, headers } = err.response;
+  const serverMessage =
+    typeof data === 'object' && data !== null && typeof (data as { message?: unknown }).message === 'string'
+      ? (data as { message: string }).message
+      : '';
+  switch (status) {
+    case 429: {
+      const seconds = Number(headers?.['retry-after']);
+      if (Number.isFinite(seconds) && seconds > 0) {
+        const minutes = Math.ceil(seconds / 60);
+        return `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+      }
+      return 'Too many attempts. Please wait a bit and try again.';
+    }
+    case 413:
+      return 'That file is too large.';
+    case 415:
+      return serverMessage || "That file type isn't supported.";
+    case 507:
+      return 'Storage is full right now. Please try again later.';
+    default:
+      return serverMessage || fallback;
+  }
+}
+
 export default apiClient;

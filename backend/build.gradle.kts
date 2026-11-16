@@ -28,6 +28,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    // Bounded in-memory maps for rate limiting (Apache-2.0; version from the Boot BOM)
+    implementation("com.github.ben-manes.caffeine:caffeine")
 
     // Kotlin
     implementation("tools.jackson.module:jackson-module-kotlin")

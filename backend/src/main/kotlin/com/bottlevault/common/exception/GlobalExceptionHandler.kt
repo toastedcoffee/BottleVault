@@ -2,11 +2,13 @@
 // SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 package com.bottlevault.common.exception
 
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.multipart.MaxUploadSizeExceededException
 import java.time.Instant
 
@@ -46,6 +48,22 @@ class GlobalExceptionHandler {
         )
     }
 
+    @ExceptionHandler(ApiException::class)
+    fun handleApi(ex: ApiException): ResponseEntity<ErrorResponse> {
+        val response = ResponseEntity.status(ex.status)
+        if (ex is RateLimitedException) response.header(HttpHeaders.RETRY_AFTER, ex.retryAfterSeconds.toString())
+        return response.body(ErrorResponse(ex.status.value(), ex.error, ex.message))
+    }
+
+    // A path or query value that doesn't convert (bad enum, malformed UUID, non-number).
+    // The underlying message names internal classes, so it is never echoed. ex.name is
+    // the parameter name from our own controller signature, never client text.
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    fun handleTypeMismatch(ex: MethodArgumentTypeMismatchException): ResponseEntity<ErrorResponse> =
+        ResponseEntity.badRequest().body(ErrorResponse(400, "Bad Request", "Invalid value for '${ex.name}'"))
+
+    // Messages from require(...) and similar checks are written for the client, so they
+    // are echoed. Keep it that way: request validation across the API relies on it.
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleBadRequest(ex: IllegalArgumentException): ResponseEntity<ErrorResponse> =
         ResponseEntity.badRequest().body(

@@ -54,6 +54,33 @@ app:
     refresh-expiration-ms: 604800000  # 7 days (server-side, revocable)
   registration:
     enabled: ${REGISTRATION_ENABLED:true}
+  rate-limit:
+    # Per client (spec C2) and per path, for everything under /api/auth/.
+    max-attempts: 10
+    window-seconds: 60
+    auth:
+      # Stricter, per client, for account creation.
+      register-limit: 5
+      register-window: 1h
+      # Per account: failed sign-ins before a cool-down.
+      account-failures: 10
+      account-window: 15m
+  security:
+    # Hash key for IPs and emails in the security log (IP_HASH_KEY). Unset: a
+    # random key per run, so hashes do not match across restarts.
+    ip-hash-key: ${IP_HASH_KEY:}
+    # Comma-separated CIDRs. Only these peers may vouch for a visitor's address
+    # with CF-Connecting-IP. Empty: trust nobody, key on the connecting peer.
+    trusted-proxy-cidrs: ${TRUSTED_PROXY_CIDRS:}
+    # Directory for security.log (daily files, kept 30 days) and app.log (kept
+    # 14 days). Empty: console only.
+    log-dir: ${LOG_DIR:}
+    privacy-url: ${PRIVACY_URL:}
+  egress:
+    # http://host:port of the egress proxy for outbound calls. Empty: direct.
+    proxy: ${EGRESS_PROXY:}
+    connect-timeout: 5s
+    read-timeout: 10s
   cors:
     # Comma-separated list of allowed origins for CORS on /api/**
     # Example: https://cellar.bottlevault.app,https://bottlevault.app
