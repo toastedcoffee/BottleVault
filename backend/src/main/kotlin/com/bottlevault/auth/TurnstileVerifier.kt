@@ -15,6 +15,7 @@ import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.util.LinkedMultiValueMap
 import org.springframework.web.client.RestClientException
+import java.util.concurrent.atomic.AtomicBoolean
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class SiteverifyResponse(
@@ -50,6 +51,7 @@ class TurnstileVerifier(
     @Value("\${app.turnstile.verify-url:https://challenges.cloudflare.com/turnstile/v0/siteverify}") private val verifyUrl: String,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+    private val testKeyWarned = AtomicBoolean(false)
 
     fun requireHuman(token: String?, action: String, client: ClientIp) {
         if (secretKey.isBlank()) return
@@ -76,7 +78,9 @@ class TurnstileVerifier(
         if (result != null && result.success && result.fromTestingKey) {
             // A test secret is configured: no real check happened. Fine for local
             // testing; the warning makes it visible if it ever reaches a real stack.
-            log.warn("Turnstile is configured with a Cloudflare test key: every visitor passes the check")
+            if (testKeyWarned.compareAndSet(false, true)) {
+                log.warn("Turnstile is configured with a Cloudflare test key: every visitor passes the check")
+            }
             return
         }
         val accepted = result != null && result.success && result.action == action &&
