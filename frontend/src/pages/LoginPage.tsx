@@ -8,6 +8,7 @@ import { readInviteFromHash } from '../lib/invite';
 import { Wine } from 'lucide-react';
 import InlineError from '../components/common/InlineError';
 import SourceOffer from '../components/common/SourceOffer';
+import TurnstileWidget from '../components/auth/TurnstileWidget';
 
 const inputClasses =
   'w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright';
@@ -39,6 +40,8 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
   const [inviteCode, setInviteCode] = useState(inviteFromLink ?? '');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileReset, setTurnstileReset] = useState(0);
 
   // Then take the code out of the address bar and history.
   useEffect(() => {
@@ -51,10 +54,15 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
   const canRegister = mode !== 'closed';
   const needsInvite = mode === 'invite' || inviteFromLink !== null;
   const privacyHref = safeHttpUrl(config?.privacyUrl);
+  const siteKey = config?.turnstileSiteKey || null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (siteKey && !turnstileToken) {
+      setError('Please complete the verification.');
+      return;
+    }
     setLoading(true);
     try {
       if (isRegistering) {
@@ -63,14 +71,20 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
           password,
           displayName: displayName || undefined,
           inviteCode: needsInvite ? inviteCode.trim() || undefined : undefined,
+          turnstileToken: turnstileToken ?? undefined,
         });
       } else {
-        await login({ email, password });
+        await login({ email, password, turnstileToken: turnstileToken ?? undefined });
       }
     } catch (err: unknown) {
       setError(describeApiError(err));
     } finally {
       setLoading(false);
+      // Tokens are single-use: whatever happened, the next attempt needs a new one.
+      if (siteKey) {
+        setTurnstileToken(null);
+        setTurnstileReset((k) => k + 1);
+      }
     }
   };
 
@@ -155,6 +169,16 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
                 placeholder={isRegistering ? '8 to 72 characters' : 'Your password'}
               />
             </div>
+
+            {siteKey && (
+              <TurnstileWidget
+                key={isRegistering ? 'register' : 'login'}
+                siteKey={siteKey}
+                action={isRegistering ? 'register' : 'login'}
+                onToken={setTurnstileToken}
+                resetKey={turnstileReset}
+              />
+            )}
 
             <button
               type="submit"

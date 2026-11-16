@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import LoginPage from './LoginPage';
 import { useAuth } from '../context/useAuth';
 import { useAuthConfig } from '../hooks/useAuthConfig';
@@ -95,5 +95,48 @@ describe('registration modes', () => {
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
     fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
     expect(await screen.findByText('Too many attempts. Try again in 10 minutes.')).toBeInTheDocument();
+  });
+});
+
+describe('turnstile', () => {
+  let tokenCallback: ((t: string) => void) | null = null;
+
+  beforeEach(() => {
+    window.turnstile = {
+      render: vi.fn((_el: HTMLElement, o: Record<string, unknown>) => { tokenCallback = o.callback as (t: string) => void; return 'w'; }),
+      reset: vi.fn(),
+      remove: vi.fn(),
+    };
+    withConfig({ turnstileSiteKey: '1x00000000000000000000AA' });
+  });
+
+  afterEach(() => { delete window.turnstile; });
+
+  it('will not submit until the check has produced a token, then sends it', async () => {
+    await act(async () => { render(<LoginPage />); });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'user@example.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
+    expect(await screen.findByText('Please complete the verification.')).toBeInTheDocument();
+    expect(login).not.toHaveBeenCalled();
+
+    act(() => tokenCallback!('tok-1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
+    await waitFor(() => expect(login).toHaveBeenCalledWith(expect.objectContaining({ turnstileToken: 'tok-1' })));
+  });
+
+  it('asks for a fresh token after an attempt, since tokens are single-use', async () => {
+    await act(async () => { render(<LoginPage />); });
+    act(() => tokenCallback!('tok-1'));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'user@example.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
+    await waitFor(() => expect(window.turnstile!.reset).toHaveBeenCalledWith('w'));
+  });
+
+  it('shows no widget when no site key is configured', async () => {
+    withConfig({ turnstileSiteKey: null });
+    await act(async () => { render(<LoginPage />); });
+    expect(window.turnstile!.render).not.toHaveBeenCalled();
   });
 });
