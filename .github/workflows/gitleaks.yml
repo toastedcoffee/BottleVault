@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2025-2026 toastedcoffee
+name: Secret scan
+
+# gitleaks over the full history reachable from the commit under test.
+#
+# Runs the gitleaks binary (permissively licensed) rather than
+# gitleaks/gitleaks-action, whose licence is not an open-source one and which
+# wants PR-comment scopes. The
+# cost: Dependabot cannot bump a downloaded binary, so GITLEAKS_VERSION and
+# GITLEAKS_SHA256 are a manual bump, taken from the release's checksums file.
+#
+# The scan is deliberately non-verbose with --redact. This repo is public and
+# so are its Actions logs: a failing run prints only a count, never the file,
+# line or secret. To see what it found, run locally:
+#   gitleaks git --redact -v --log-opts="--full-history HEAD" .
+# If a finding is a false positive, allowlist it narrowly in .gitleaks.toml
+# (repo root, picked up automatically) with a comment saying why.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # full history, not just the tip
+          persist-credentials: false
+
+      - name: Install gitleaks (checksum-verified)
+        run: |
+          set -euo pipefail
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -fsSL --retry 3 --retry-all-errors -o "$tarball" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${tarball}"
+          echo "${GITLEAKS_SHA256}  ${tarball}" | sha256sum -c -
+          tar -xzf "$tarball" gitleaks
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Scan history for secrets
+        # --log-opts pins the scan to history reachable from HEAD. The default
+        # is --all, which would also scan every other branch fetched by
+        # fetch-depth: 0, so one PR could fail on another branch's commit.
+        run: gitleaks git --redact --no-banner --log-opts="--full-history HEAD" .

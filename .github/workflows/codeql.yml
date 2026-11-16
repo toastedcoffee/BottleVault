@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2025-2026 toastedcoffee
+name: CodeQL
+
+# Advanced setup (this file) rather than the repository's "default setup"
+# toggle: the two are mutually exclusive, and only a workflow file lets the
+# Kotlin backend be built the way this repo builds it. Do not switch default
+# setup on while this file exists -- GitHub then rejects this workflow's
+# uploads.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, so new CodeQL queries run against unchanged code too.
+    - cron: '23 5 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF to code scanning
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+          - language: java-kotlin
+            build-mode: manual
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK (java-kotlin only)
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - name: Set up Gradle (java-kotlin only)
+        if: matrix.language == 'java-kotlin'
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Build backend for CodeQL (java-kotlin only)
+        if: matrix.language == 'java-kotlin'
+        working-directory: ./backend
+        # CodeQL extracts Kotlin by observing the compiler, so the compile has
+        # to really happen inside this traced step: no build cache (a cache
+        # hit compiles nothing), no Gradle daemon started earlier, and the
+        # Kotlin compiler in-process rather than in its own daemon JVM.
+        run: >-
+          ./gradlew --no-daemon --no-build-cache
+          -Pkotlin.compiler.execution.strategy=in-process
+          -Pkotlin.incremental=false
+          testClasses
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}

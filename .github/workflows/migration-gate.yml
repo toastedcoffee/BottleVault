@@ -28,14 +28,18 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write        # label creation goes through the issues API
 
 jobs:
   migration-gate:
     runs-on: ubuntu-latest
+    # Write scopes live on the job, not the workflow, so any job added to this
+    # file later starts read-only.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write        # label creation goes through the issues API
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Self-test the classifier
         # The classifier fails silently when wrong -- one that calls everything
