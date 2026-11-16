@@ -7,7 +7,6 @@ import jakarta.servlet.DispatcherType
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.http.HttpStatus
@@ -55,7 +54,6 @@ class SecurityConfig(
                     .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                     .requestMatchers("/api/auth/**").permitAll()
                     .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/brands/**", "/api/products/**").permitAll()
 
                 // Only allow Swagger access when explicitly enabled
                 if (swaggerEnabled) {

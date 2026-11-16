@@ -84,7 +84,7 @@ class CrossUserAccessTest : AbstractPostgresIntegrationTest() {
         owner = register("owner-$nonce@example.com", "Owner Account")
         intruder = register("intruder-$nonce@example.com", "Intruder Account")
 
-        val products = mockMvc.perform(get("/api/products").param("search", "Old No. 7"))
+        val products = mockMvc.perform(get("/api/products").param("search", "Old No. 7").header("Authorization", "Bearer ${owner.token}"))
             .andExpect(status().isOk)
             .andReturn()
         productId = objectMapper.readTree(products.response.contentAsString)[0]["id"].asText()
