@@ -37,4 +37,11 @@ class User(
     /** The invite that created this account; null for accounts made without one. */
     @Column(name = "invite_code_id")
     var inviteCodeId: UUID? = null,
+
+    /** Set by scripts/suspend-user.sh; a suspended account cannot sign in. */
+    @Column(name = "disabled_at")
+    var disabledAt: Instant? = null,
+
+    @Column(name = "disabled_reason", length = 200)
+    var disabledReason: String? = null,
 )

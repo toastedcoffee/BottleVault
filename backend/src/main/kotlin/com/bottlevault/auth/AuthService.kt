@@ -118,6 +118,11 @@ class AuthService(
             securityEvents.emit("auth.login.failure", email = email, attrs = mapOf("reason" to "bad_credentials"))
             throw IllegalArgumentException("Invalid email or password")
         }
+        if (user.disabledAt != null) {
+            // Revealed only to someone who knows the password.
+            securityEvents.emit("auth.suspended.blocked", userId = user.id)
+            throw AccessDeniedException("This account is suspended")
+        }
         securityEvents.emit("auth.login.success", userId = user.id)
         return createAuthResponse(user)
     }
@@ -126,11 +131,19 @@ class AuthService(
     fun refresh(refreshToken: String): AuthResponse {
         // consume() deletes the presented token, so each refresh token works
         // exactly once — the response carries its replacement.
-        val userId = refreshTokenService.consume(refreshToken)
-            ?: throw IllegalArgumentException("Invalid or expired refresh token")
+        val userId = refreshTokenService.consume(refreshToken) ?: run {
+            securityEvents.emit("auth.refresh.failure")
+            throw IllegalArgumentException("Invalid or expired refresh token")
+        }
 
-        val user = userRepository.findById(userId)
-            .orElseThrow { IllegalArgumentException("Invalid or expired refresh token") }
+        val user = userRepository.findById(userId).orElse(null) ?: run {
+            securityEvents.emit("auth.refresh.failure")
+            throw IllegalArgumentException("Invalid or expired refresh token")
+        }
+        if (user.disabledAt != null) {
+            securityEvents.emit("auth.suspended.blocked", userId = user.id)
+            throw IllegalArgumentException("Invalid or expired refresh token")
+        }
 
         return createAuthResponse(user)
     }
@@ -146,7 +159,7 @@ class AuthService(
         val user = userRepository.findById(userId)
             .orElseThrow { ResourceNotFoundException("User not found") }
 
-        request.displayName?.let { user.displayName = it }
+        request.displayName?.let { user.displayName = it.trim().ifEmpty { null } }
         request.defaultCurrency?.let { user.defaultCurrency = it }
         request.measurementUnit?.let { user.measurementUnit = it }
         user.updatedAt = Instant.now()
@@ -163,6 +176,7 @@ class AuthService(
 
     @Transactional
     fun changePassword(userId: UUID, request: ChangePasswordRequest) {
+        PasswordRules.check(request.newPassword)
         val user = userRepository.findById(userId)
             .orElseThrow { ResourceNotFoundException("User not found") }
 

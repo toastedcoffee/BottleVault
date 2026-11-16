@@ -9,10 +9,12 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
+import java.util.UUID
 
 @Component
 class JwtAuthenticationFilter(
-    private val jwtTokenProvider: JwtTokenProvider
+    private val jwtTokenProvider: JwtTokenProvider,
+    private val userStatusCache: UserStatusCache,
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -26,8 +28,14 @@ class JwtAuthenticationFilter(
             val tokenType = jwtTokenProvider.getTokenType(token)
             if (tokenType == "access") {
                 val userId = jwtTokenProvider.getUserIdFromToken(token)
-                val authentication = UsernamePasswordAuthenticationToken(userId, null, emptyList())
-                SecurityContextHolder.getContext().authentication = authentication
+                val uuid = runCatching { UUID.fromString(userId) }.getOrNull()
+                // A suspended or deleted account's token is left unauthenticated,
+                // which the entry point turns into 401 — and the SPA's refresh then
+                // fails and signs the user out.
+                if (uuid != null && userStatusCache.isActive(uuid)) {
+                    val authentication = UsernamePasswordAuthenticationToken(userId, null, emptyList())
+                    SecurityContextHolder.getContext().authentication = authentication
+                }
             }
         }
 
