@@ -3,6 +3,8 @@
 package com.bottlevault.auth
 
 import com.bottlevault.auth.dto.*
+import com.bottlevault.common.security.ClientIpResolver
+import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.http.CacheControl
 import org.springframework.http.HttpStatus
@@ -12,7 +14,11 @@ import java.time.Duration
 
 @RestController
 @RequestMapping("/api/auth")
-class AuthController(private val authService: AuthService) {
+class AuthController(
+    private val authService: AuthService,
+    private val turnstile: TurnstileVerifier,
+    private val clientIpResolver: ClientIpResolver,
+) {
 
     /** Public: what the prebuilt frontend needs before anyone signs in. */
     @GetMapping("/config")
@@ -23,12 +29,19 @@ class AuthController(private val authService: AuthService) {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    fun register(@Valid @RequestBody request: RegisterRequest): AuthResponse =
-        authService.register(request)
+    fun register(@Valid @RequestBody request: RegisterRequest, http: HttpServletRequest): AuthResponse {
+        // Before the service: no invite is consumed and no account is looked up for
+        // a request that has not passed the human check. The per-client limits have
+        // already run in RateLimitFilter.
+        turnstile.requireHuman(request.turnstileToken, "register", clientIpResolver.resolve(http))
+        return authService.register(request)
+    }
 
     @PostMapping("/login")
-    fun login(@Valid @RequestBody request: LoginRequest): AuthResponse =
-        authService.login(request)
+    fun login(@Valid @RequestBody request: LoginRequest, http: HttpServletRequest): AuthResponse {
+        turnstile.requireHuman(request.turnstileToken, "login", clientIpResolver.resolve(http))
+        return authService.login(request)
+    }
 
     @PostMapping("/refresh")
     fun refresh(@Valid @RequestBody request: RefreshRequest): AuthResponse =
