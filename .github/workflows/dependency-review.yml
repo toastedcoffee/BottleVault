@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2025-2026 toastedcoffee
+name: Dependency review
+
+# Fails a PR that adds or bumps to a dependency version with a known
+# vulnerability of high severity or above.
+#
+# Deliberately no licence allow/deny list: existing dependencies include
+# EPL- and MPL-licensed ones, and a deny list would block their routine bumps.
+# Licence policy for NEW dependencies is a review-time rule (CLAUDE.md).
+#
+# Coverage is whatever GitHub's dependency graph sees. Today that is npm and
+# GitHub Actions only; Gradle dependencies do not appear in it, so backend
+# bumps are not checked here.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      # No checkout: the action diffs base and head through the dependency
+      # graph API and reads no workspace files.
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
