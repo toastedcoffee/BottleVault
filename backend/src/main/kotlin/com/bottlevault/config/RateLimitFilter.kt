@@ -46,7 +46,12 @@ class RateLimitFilter(
             decision = rateLimiter.tryAcquire("register", client.rateLimitKey, registerLimit, registerWindow)
         }
         if (!decision.allowed) {
-            securityEvents.emit("ratelimit.tripped", attrs = mapOf("bucket" to bucket), clientIp = client)
+            // One event per client and bucket per window, not one per refused request:
+            // a client hammering a closed bucket must not flood the security log and
+            // push older evidence out of its size cap.
+            if (rateLimiter.tryAcquire("trip-logged:$bucket", client.rateLimitKey, 1, Duration.ofSeconds(windowSeconds)).allowed) {
+                securityEvents.emit("ratelimit.tripped", attrs = mapOf("bucket" to bucket), clientIp = client)
+            }
             response.status = HttpStatus.TOO_MANY_REQUESTS.value()
             response.setHeader(HttpHeaders.RETRY_AFTER, decision.retryAfterSeconds.toString())
             response.contentType = MediaType.APPLICATION_JSON_VALUE

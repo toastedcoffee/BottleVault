@@ -2,9 +2,15 @@
 // SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 package com.bottlevault.config
 
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.bottlevault.common.security.ClientIpResolver
+import com.bottlevault.common.security.SecurityEvents
 import com.bottlevault.support.AbstractPostgresIntegrationTest
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
@@ -63,6 +69,20 @@ class RateLimitFilterIntegrationTest : AbstractPostgresIntegrationTest() {
             ).andExpect(status().isBadRequest)
         }
         login(peer = "192.168.8.8", cf = null).andExpect(status().isTooManyRequests)
+    }
+
+    @Test
+    fun `a client hammering a closed bucket is logged once per window, not once per request`() {
+        val captured = ListAppender<ILoggingEvent>().also { it.start() }
+        val logger = LoggerFactory.getLogger(SecurityEvents.LOGGER_NAME) as Logger
+        logger.addAppender(captured)
+        try {
+            repeat(3) { login(peer = "192.168.6.6", cf = null).andExpect(status().isBadRequest) }
+            repeat(5) { login(peer = "192.168.6.6", cf = null).andExpect(status().isTooManyRequests) }
+            assertEquals(1, captured.list.count { it.formattedMessage.contains("\"ratelimit.tripped\"") })
+        } finally {
+            logger.detachAppender(captured)
+        }
     }
 
     @Test

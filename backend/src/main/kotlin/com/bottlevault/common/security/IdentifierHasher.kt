@@ -29,11 +29,15 @@ class IdentifierHasher(@Value("\${app.security.ip-hash-key:}") configuredKey: St
             ByteArray(32).also { SecureRandom().nextBytes(it) }
         }
 
+    // Mac is not thread-safe; one initialised instance per thread avoids a provider
+    // lookup and key setup on every request.
+    private val macs: ThreadLocal<Mac> = ThreadLocal.withInitial {
+        Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(key, "HmacSHA256")) }
+    }
+
     /** First 16 hex characters of HMAC-SHA256(key, canonical). */
     fun hash(canonical: String): String {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(key, "HmacSHA256"))
-        return mac.doFinal(canonical.toByteArray(Charsets.UTF_8))
+        return macs.get().doFinal(canonical.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
             .substring(0, 16)
     }
