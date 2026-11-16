@@ -56,7 +56,7 @@ class BottleVaultIntegrationTest : AbstractPostgresIntegrationTest() {
 
     @Test
     fun `brands are seeded on startup`() {
-        val result = mockMvc.perform(get("/api/brands"))
+        val result = mockMvc.perform(get("/api/brands").header("Authorization", "Bearer $accessToken"))
             .andExpect(status().isOk)
             .andReturn()
 
@@ -72,7 +72,7 @@ class BottleVaultIntegrationTest : AbstractPostgresIntegrationTest() {
     fun `can create and retrieve a bottle`() {
         // Get a product to use
         val productsResult = mockMvc.perform(
-            get("/api/products").param("search", "Old No. 7")
+            get("/api/products").param("search", "Old No. 7").header("Authorization", "Bearer $accessToken")
         )
             .andExpect(status().isOk)
             .andReturn()
@@ -133,7 +133,7 @@ class BottleVaultIntegrationTest : AbstractPostgresIntegrationTest() {
     @Test
     fun `can delete a bottle`() {
         // Get a product
-        val productsResult = mockMvc.perform(get("/api/products").param("search", "Jameson Irish"))
+        val productsResult = mockMvc.perform(get("/api/products").param("search", "Jameson Irish").header("Authorization", "Bearer $accessToken"))
             .andExpect(status().isOk)
             .andReturn()
         val productId = objectMapper.readTree(productsResult.response.contentAsString)[0]["id"].asText()
@@ -238,7 +238,7 @@ class BottleVaultIntegrationTest : AbstractPostgresIntegrationTest() {
     @Test
     fun `statistics reflects added bottles`() {
         // Get a product
-        val productsResult = mockMvc.perform(get("/api/products").param("search", "Old No. 7"))
+        val productsResult = mockMvc.perform(get("/api/products").param("search", "Old No. 7").header("Authorization", "Bearer $accessToken"))
             .andExpect(status().isOk)
             .andReturn()
         val productId = objectMapper.readTree(productsResult.response.contentAsString)[0]["id"].asText()
@@ -382,7 +382,7 @@ class BottleVaultIntegrationTest : AbstractPostgresIntegrationTest() {
     }
 
     private fun createBottle(searchName: String, token: String): String {
-        val productsResult = mockMvc.perform(get("/api/products").param("search", searchName))
+        val productsResult = mockMvc.perform(get("/api/products").param("search", searchName).header("Authorization", "Bearer $token"))
             .andExpect(status().isOk)
             .andReturn()
         val productId = objectMapper.readTree(productsResult.response.contentAsString)[0]["id"].asText()
