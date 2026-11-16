@@ -20,3 +20,6 @@ open class ApiException(val status: HttpStatus, val error: String, message: Stri
 /** 429 with a Retry-After header. */
 class RateLimitedException(message: String, val retryAfterSeconds: Long) :
     ApiException(HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", message)
+
+/** One message for every unusable invite, so the reason (unknown, used, expired, bound) never leaks. */
+class InvalidInviteException : ApiException(HttpStatus.BAD_REQUEST, "Bad Request", "Invalid or expired invite code")

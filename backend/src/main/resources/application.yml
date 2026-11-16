@@ -53,7 +53,15 @@ app:
     expiration-ms: 900000        # 15 minutes
     refresh-expiration-ms: 604800000  # 7 days (server-side, revocable)
   registration:
+    # open | invite | closed. Empty: REGISTRATION_ENABLED decides (true = open,
+    # false = closed), so existing deployments keep their behaviour.
+    mode: ${REGISTRATION_MODE:}
     enabled: ${REGISTRATION_ENABLED:true}
+  turnstile:
+    # Cloudflare Turnstile. Empty site key: no widget, and no verification.
+    site-key: ${TURNSTILE_SITE_KEY:}
+    secret-key: ${TURNSTILE_SECRET_KEY:}
+    expected-hostname: ${TURNSTILE_EXPECTED_HOSTNAME:}
   rate-limit:
     # Per client (spec C2) and per path, for everything under /api/auth/.
     max-attempts: 10
