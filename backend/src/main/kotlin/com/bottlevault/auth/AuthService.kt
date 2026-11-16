@@ -13,6 +13,7 @@ import com.bottlevault.common.security.SecurityEvents
 import com.bottlevault.user.dto.ChangePasswordRequest
 import com.bottlevault.user.dto.UpdateProfileRequest
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -75,16 +76,23 @@ class AuthService(
             throw ResourceAlreadyExistsException("An account with this email already exists")
         }
 
-        val saved = userRepository.save(
-            User(
-                email = email,
-                // Spring Security 7 annotates PasswordEncoder.encode as @Nullable; BCrypt
-                // never returns null, so assert non-null rather than propagate nullability.
-                passwordHash = passwordEncoder.encode(request.password)!!,
-                displayName = request.displayName?.trim()?.ifEmpty { null },
-                inviteCodeId = inviteId,
+        val saved = try {
+            // Flushed here so a concurrent registration of the same email, which
+            // passed existsByEmail too, hits the unique constraint as a clean 409.
+            userRepository.saveAndFlush(
+                User(
+                    email = email,
+                    // Spring Security 7 annotates PasswordEncoder.encode as @Nullable; BCrypt
+                    // never returns null, so assert non-null rather than propagate nullability.
+                    passwordHash = passwordEncoder.encode(request.password)!!,
+                    displayName = request.displayName?.trim()?.ifEmpty { null },
+                    inviteCodeId = inviteId,
+                )
             )
-        )
+        } catch (e: DataIntegrityViolationException) {
+            securityEvents.emit("auth.register.failure", email = email, attrs = mapOf("reason" to "email_exists"))
+            throw ResourceAlreadyExistsException("An account with this email already exists")
+        }
         securityEvents.emit("auth.register.success", userId = saved.id, attrs = mapOf("inviteId" to inviteId?.toString()))
         return createAuthResponse(saved)
     }
