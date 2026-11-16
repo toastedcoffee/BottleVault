@@ -28,6 +28,13 @@ app:
   rate-limit:
     max-attempts: 1000
     window-seconds: 60
+    # Tests register many users from 127.0.0.1; a class that exercises a limit
+    # tightens it in its own @SpringBootTest properties.
+    auth:
+      register-limit: 100000
+      register-window: 1h
+      account-failures: 100000
+      account-window: 15m
   barcode:
     miss-ttl-days: 7
     barcodelookup:
