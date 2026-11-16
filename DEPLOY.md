@@ -584,6 +584,22 @@ Redeploy, then verify:
 
 ---
 
+## 7d. Pre-check before the email-normalization migration
+
+This release stores every email address trimmed and in lower case, and a
+migration converts existing rows. Because email addresses are unique, two
+accounts that differ only by case (`Someone@example.com` and
+`someone@example.com`) would make the migration fail and stop the API from
+starting. Check first — this must print nothing:
+
+```bash
+docker exec -i bottlevault-db psql -U bottlevault -d bottlevault -c "SELECT LOWER(TRIM(email)) AS email, COUNT(*) FROM users GROUP BY 1 HAVING COUNT(*) > 1;"
+```
+
+If it prints rows, decide which account to keep for each and remove the other
+with `scripts/delete-user.sh` before updating. This is a ⚠️ backup-first update
+(§4) like any other migration.
+
 ## 8. Future hardening (not yet built)
 
 - **Zero-downtime:** two `web` replicas or a blue/green swap behind the tunnel,

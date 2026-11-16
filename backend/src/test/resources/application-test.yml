@@ -6,6 +6,13 @@
 # that previously let Postgres-specific bugs ship — bpchar-vs-varchar mismatches
 # and plpgsql DO-block parsing both passed under H2 but broke in production.
 spring:
+  datasource:
+    hikari:
+      # Spring caches every distinct test context, each with its own pool, all
+      # against one Testcontainers Postgres (max_connections 100). Small pools keep
+      # many cached contexts under that limit ("too many clients already").
+      maximum-pool-size: 4
+      minimum-idle: 1
   jpa:
     hibernate:
       # validate (matching prod) so a Hibernate-entity-vs-schema mismatch fails

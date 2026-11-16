@@ -56,6 +56,18 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/register"
+        element={
+          isAuthenticated ? (
+            <Navigate to="/inventory" replace />
+          ) : (
+            <Suspense fallback={<LoadingSpinner className="min-h-screen" />}>
+              <LoginPage initialMode="register" />
+            </Suspense>
+          )
+        }
+      />
+      <Route
         element={
           <ProtectedRoute>
             <AppLayout />

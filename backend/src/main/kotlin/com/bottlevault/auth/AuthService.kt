@@ -4,11 +4,16 @@ package com.bottlevault.auth
 
 import com.bottlevault.auth.dto.*
 import com.bottlevault.common.exception.AccessDeniedException
+import com.bottlevault.common.exception.InvalidInviteException
+import com.bottlevault.common.exception.RateLimitedException
 import com.bottlevault.common.exception.ResourceAlreadyExistsException
 import com.bottlevault.common.exception.ResourceNotFoundException
+import com.bottlevault.common.security.Emails
+import com.bottlevault.common.security.SecurityEvents
 import com.bottlevault.user.dto.ChangePasswordRequest
 import com.bottlevault.user.dto.UpdateProfileRequest
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -22,39 +27,98 @@ class AuthService(
     private val passwordEncoder: PasswordEncoder,
     private val jwtTokenProvider: JwtTokenProvider,
     private val refreshTokenService: RefreshTokenService,
-    @Value("\${app.registration.enabled}") private val registrationEnabled: Boolean
+    private val inviteService: InviteService,
+    private val loginThrottle: LoginThrottle,
+    private val securityEvents: SecurityEvents,
+    @Value("\${app.registration.mode:}") registrationModeSetting: String,
+    @Value("\${app.registration.enabled:true}") registrationEnabled: Boolean,
+    @Value("\${app.turnstile.site-key:}") private val turnstileSiteKey: String,
+    @Value("\${app.security.privacy-url:}") private val privacyUrl: String,
 ) {
+    private val registrationMode = RegistrationMode.resolve(registrationModeSetting, registrationEnabled)
+
+    // A real bcrypt hash of nothing in particular: comparing against it when the
+    // email is unknown makes both failure paths take the same time. Built eagerly,
+    // not lazily: the first unknown-email sign-in would otherwise pay for one extra
+    // encode, a measurable blip in exactly the timing this hides.
+    private val timingDummyHash: String = passwordEncoder.encode("timing-equalizer-not-a-password")!!
+
+    fun publicConfig() = AuthConfigResponse(
+        registrationMode = registrationMode.name.lowercase(),
+        turnstileSiteKey = turnstileSiteKey.ifBlank { null },
+        privacyUrl = privacyUrl.ifBlank { null },
+    )
+
     @Transactional
     fun register(request: RegisterRequest): AuthResponse {
-        if (!registrationEnabled) {
+        if (registrationMode == RegistrationMode.CLOSED) {
+            securityEvents.emit("auth.register.failure", email = request.email, attrs = mapOf("reason" to "closed"))
             // AccessDeniedException maps to a clean 403 via GlobalExceptionHandler;
             // IllegalStateException would fall through as an unhandled 500.
             throw AccessDeniedException("Registration is currently disabled")
         }
-        if (userRepository.existsByEmail(request.email)) {
+        val email = Emails.normalize(request.email)
+        PasswordRules.check(request.password)
+
+        // The invite is checked BEFORE whether the email exists: without a valid
+        // code this endpoint must not reveal which emails have accounts.
+        val inviteId = if (registrationMode == RegistrationMode.INVITE) {
+            inviteService.consume(request.inviteCode, email) ?: run {
+                securityEvents.emit("auth.register.failure", email = email, attrs = mapOf("reason" to "invite_invalid"))
+                throw InvalidInviteException()
+            }
+        } else {
+            null
+        }
+
+        if (userRepository.existsByEmail(email)) {
+            securityEvents.emit("auth.register.failure", email = email, attrs = mapOf("reason" to "email_exists"))
             throw ResourceAlreadyExistsException("An account with this email already exists")
         }
 
-        val user = User(
-            email = request.email,
-            // Spring Security 7 annotates PasswordEncoder.encode as @Nullable; BCrypt
-            // never returns null, so assert non-null rather than propagate nullability.
-            passwordHash = passwordEncoder.encode(request.password)!!,
-            displayName = request.displayName
-        )
-        val savedUser = userRepository.save(user)
-        return createAuthResponse(savedUser)
+        val saved = try {
+            // Flushed here so a concurrent registration of the same email, which
+            // passed existsByEmail too, hits the unique constraint as a clean 409.
+            userRepository.saveAndFlush(
+                User(
+                    email = email,
+                    // Spring Security 7 annotates PasswordEncoder.encode as @Nullable; BCrypt
+                    // never returns null, so assert non-null rather than propagate nullability.
+                    passwordHash = passwordEncoder.encode(request.password)!!,
+                    displayName = request.displayName?.trim()?.ifEmpty { null },
+                    inviteCodeId = inviteId,
+                )
+            )
+        } catch (e: DataIntegrityViolationException) {
+            securityEvents.emit("auth.register.failure", email = email, attrs = mapOf("reason" to "email_exists"))
+            throw ResourceAlreadyExistsException("An account with this email already exists")
+        }
+        securityEvents.emit("auth.register.success", userId = saved.id, attrs = mapOf("inviteId" to inviteId?.toString()))
+        return createAuthResponse(saved)
     }
 
     @Transactional
     fun login(request: LoginRequest): AuthResponse {
-        val user = userRepository.findByEmail(request.email)
-            ?: throw IllegalArgumentException("Invalid email or password")
-
-        if (!passwordEncoder.matches(request.password, user.passwordHash)) {
+        val email = Emails.normalize(request.email)
+        try {
+            loginThrottle.ensureAllowed(email)
+        } catch (e: RateLimitedException) {
+            securityEvents.emit("auth.login.failure", email = email, attrs = mapOf("reason" to "throttled"))
+            throw e
+        }
+        val user = userRepository.findByEmail(email)
+        val passwordMatches = if (user == null) {
+            passwordEncoder.matches(request.password, timingDummyHash)
+            false
+        } else {
+            passwordEncoder.matches(request.password, user.passwordHash)
+        }
+        if (user == null || !passwordMatches) {
+            loginThrottle.recordFailure(email)
+            securityEvents.emit("auth.login.failure", email = email, attrs = mapOf("reason" to "bad_credentials"))
             throw IllegalArgumentException("Invalid email or password")
         }
-
+        securityEvents.emit("auth.login.success", userId = user.id)
         return createAuthResponse(user)
     }
 

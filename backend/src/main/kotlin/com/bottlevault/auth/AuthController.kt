@@ -4,12 +4,22 @@ package com.bottlevault.auth
 
 import com.bottlevault.auth.dto.*
 import jakarta.validation.Valid
+import org.springframework.http.CacheControl
 import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.time.Duration
 
 @RestController
 @RequestMapping("/api/auth")
 class AuthController(private val authService: AuthService) {
+
+    /** Public: what the prebuilt frontend needs before anyone signs in. */
+    @GetMapping("/config")
+    fun config(): ResponseEntity<AuthConfigResponse> =
+        ResponseEntity.ok()
+            .cacheControl(CacheControl.maxAge(Duration.ofSeconds(60)))
+            .body(authService.publicConfig())
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)

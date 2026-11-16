@@ -32,5 +32,9 @@ class User(
     val createdAt: Instant = Instant.now(),
 
     @Column(name = "updated_at")
-    var updatedAt: Instant = Instant.now()
+    var updatedAt: Instant = Instant.now(),
+
+    /** The invite that created this account; null for accounts made without one. */
+    @Column(name = "invite_code_id")
+    var inviteCodeId: UUID? = null,
 )

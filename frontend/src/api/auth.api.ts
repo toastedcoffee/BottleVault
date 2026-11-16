@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import apiClient from './client';
-import type { AuthResponse, LoginRequest, RegisterRequest } from '../types/auth';
+import type { AuthConfig, AuthResponse, LoginRequest, RegisterRequest } from '../types/auth';
 
 export const authApi = {
+  config: () => apiClient.get<AuthConfig>('/auth/config').then((r) => r.data),
+
   login: (data: LoginRequest) =>
     apiClient.post<AuthResponse>('/auth/login', data).then((r) => r.data),
 
