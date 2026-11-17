@@ -50,7 +50,9 @@ class BarcodeLookupProvider(
                 categories = product.category?.takeIf { it.isNotBlank() }
             )
         } catch (e: RestClientException) {
-            log.warn("BarcodeLookup lookup failed for {}: {}", barcode, e.message)
+            // The exception text can carry the request URL (BarcodeLookup's has the API
+            // key in it), so only its type is logged.
+            log.warn("BarcodeLookup lookup failed for {}: {}", barcode, e.javaClass.simpleName)
             null
         }
     }

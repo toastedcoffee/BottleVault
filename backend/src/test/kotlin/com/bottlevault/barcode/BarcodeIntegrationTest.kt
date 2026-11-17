@@ -172,4 +172,24 @@ class BarcodeIntegrationTest : AbstractPostgresIntegrationTest() {
         Mockito.verify(upcItemDb, Mockito.times(1)).lookup(barcode)
         Mockito.verify(openFoodFacts, Mockito.times(1)).lookup(barcode)
     }
+
+    @Test
+    fun `only 8 to 14 digit barcodes are looked up or cached`() {
+        // Also: a value past the miss table's VARCHAR(50) (a 500 before, not a 400), and a
+        // URL-shaped value like the one a back-label QR code decodes to.
+        listOf("abc", "1234567", "123456789012345", "12345678%2F..", "1".repeat(60), "https:example.com", "0821840004 27")
+            .forEach { bad ->
+                mockMvc.perform(get("/api/barcode/{barcode}", bad).header("Authorization", "Bearer $accessToken"))
+                    .andExpect(status().isBadRequest)
+            }
+        assertEquals(0, missRepository.count())
+        Mockito.verify(upcItemDb, Mockito.never()).lookup(anyString())
+        Mockito.verify(openFoodFacts, Mockito.never()).lookup(anyString())
+    }
+
+    @Test
+    fun `8 and 14 digit barcodes are both accepted`() {
+        lookup("12345670")
+        lookup("12345678901231")
+    }
 }

@@ -13,6 +13,14 @@ import org.springframework.web.bind.annotation.RestController
 class BarcodeController(private val barcodeService: BarcodeService) {
 
     @GetMapping("/{barcode}")
-    fun lookupBarcode(@PathVariable barcode: String): BarcodeLookupResponse =
-        barcodeService.lookupBarcode(barcode)
+    fun lookupBarcode(@PathVariable barcode: String): BarcodeLookupResponse {
+        // UPC-E/EAN-8 through GTIN-14. Anything else never reaches a provider or
+        // the miss cache, so junk can grow neither.
+        require(BARCODE.matches(barcode)) { "That doesn't look like a product barcode (8 to 14 digits)" }
+        return barcodeService.lookupBarcode(barcode)
+    }
+
+    private companion object {
+        val BARCODE = Regex("^[0-9]{8,14}$")
+    }
 }
