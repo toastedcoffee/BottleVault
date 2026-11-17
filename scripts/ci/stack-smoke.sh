@@ -126,7 +126,9 @@ check "api cannot reach the internet directly" no_internet bottlevault-api
 
 connect_code() { docker run --rm --network "${PROJECT}_proxy" "$CURL" -s -o /dev/null --max-time 15 -w '%{http_connect}' -x http://egress:3128 "$1"; }
 connect_is() { [ "$(connect_code "$1")" = "$2" ]; }
-check "proxy allows an allowlisted host" connect_is https://world.openfoodfacts.org/ 200
+# The one check that needs a third-party site up: retry it before calling it a failure.
+connect_ok_retry() { local i; for i in 1 2 3; do connect_is "$1" 200 && return 0; sleep 5; done; return 1; }
+check "proxy allows an allowlisted host" connect_ok_retry https://world.openfoodfacts.org/
 check "proxy refuses a host not on the allowlist" connect_is https://example.com/ 403
 check "proxy refuses a private address" connect_is https://10.1.2.3/ 403
 plain_http_refused() { [ "$(docker run --rm --network "${PROJECT}_proxy" "$CURL" -s -o /dev/null --max-time 15 -w '%{http_code}' -x http://egress:3128 http://world.openfoodfacts.org/)" = 403 ]; }
@@ -139,6 +141,11 @@ egress_dns_public() {
   [[ "$dns" == *'"1.1.1.1"'* && "$dns" == *'"9.9.9.9"'* ]]
 }
 check "egress proxy uses the public resolvers" egress_dns_public
+# A CONNECT to a bare IP whose PTR names an allowed host must not match the
+# allowlist; `dstdomain -n` turns that reverse lookup off. Not provable with a
+# live PTR record here, so check the delivered config.
+no_reverse_lookup() { docker exec bottlevault-egress grep -Eq '^acl allowed_hosts dstdomain -n ' /etc/squid/squid.conf; }
+check "proxy allowlist never reverse-resolves IP destinations" no_reverse_lookup
 
 edge_head() { docker run --rm --network "${PROJECT}_edge" "$CURL" -s -I --max-time 10 "http://frontend$1"; }
 header_has() {
