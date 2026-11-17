@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-FileCopyrightText: 2025-2026 toastedcoffee
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { describeApiError } from '../api/client';
 import {
@@ -37,6 +37,12 @@ export default function EditBottlePage() {
   const [error, setError] = useState<string>(
     () => (location.state as { notice?: string } | null)?.notice ?? ''
   );
+  // Shown once: drop it from history, so a reload or "back" does not repeat it.
+  useEffect(() => {
+    if ((location.state as { notice?: string } | null)?.notice) {
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   // Populate the form from the fetched bottle when it first loads (and again if
   // a different bottle id is loaded into this mounted component). Done during

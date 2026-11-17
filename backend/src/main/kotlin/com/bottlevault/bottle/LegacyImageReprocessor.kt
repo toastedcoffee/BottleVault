@@ -34,7 +34,19 @@ class LegacyImageReprocessor(
     private val log = LoggerFactory.getLogger(javaClass)
     private val uploadsDir = Paths.get(uploadsDirRaw).toAbsolutePath().normalize()
 
+    /**
+     * In the background: listeners for ApplicationReadyEvent run before Spring
+     * reports readiness, so doing this inline would hold the API "not ready"
+     * (and fail its healthcheck) for as long as the backlog takes.
+     */
     @EventListener(ApplicationReadyEvent::class)
+    fun startInBackground() {
+        Thread({
+            runCatching { reprocessLegacyImages() }
+                .onFailure { log.warn("Reprocessing photos uploaded before photo processing stopped: {}", it.toString()) }
+        }, "legacy-photo-reprocessor").apply { isDaemon = true }.start()
+    }
+
     fun reprocessLegacyImages() {
         val ids = bottles.findByImagePathIsNotNullAndImageBytesIsNull().mapNotNull { it.id }
         if (ids.isEmpty()) return

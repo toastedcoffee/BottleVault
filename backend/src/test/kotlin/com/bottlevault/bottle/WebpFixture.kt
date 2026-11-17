@@ -21,6 +21,19 @@ object WebpFixture {
      */
     fun cmykJpeg8x8(): ByteArray = Base64.getDecoder().decode(CMYK)
 
+    /**
+     * The start of an extended (VP8X) WebP declaring a [width] x [height] canvas,
+     * with no image data: enough for a reader to report the size, nothing more.
+     */
+    fun vp8xHeader(width: Int, height: Int): ByteArray {
+        fun le24(v: Int) = byteArrayOf(v.toByte(), (v shr 8).toByte(), (v shr 16).toByte())
+        val vp8x = byteArrayOf(0, 0, 0, 0) + le24(width - 1) + le24(height - 1)
+        val chunk = "VP8X".toByteArray() + byteArrayOf(10, 0, 0, 0) + vp8x
+        val body = "WEBP".toByteArray() + chunk
+        val size = body.size
+        return "RIFF".toByteArray() + byteArrayOf(size.toByte(), (size shr 8).toByte(), 0, 0) + body
+    }
+
     private const val ENCODED = "UklGRiwAAABXRUJQVlA4TB8AAAAvAUAAAB8gEEjeHzqN+RcQFPwf3fxHZA/gBgwR/Q8BAA=="
 
     private const val CMYK =

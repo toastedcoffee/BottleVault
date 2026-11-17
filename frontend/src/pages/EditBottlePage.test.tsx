@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import EditBottlePage from './EditBottlePage';
 import {
   useBottle,
@@ -314,5 +314,24 @@ describe('error messages', () => {
       </MemoryRouter>
     );
     expect(screen.getByText(notice)).toBeInTheDocument();
+  });
+
+  it('removes the notice from history once shown, so a reload does not repeat it', () => {
+    mockBottleQuery(makeBottle());
+    const notice = "Bottle saved, but the photo was not: That file type isn't supported.";
+    let seenState: unknown = 'unset';
+    function StateProbe() {
+      seenState = useLocation().state;
+      return null;
+    }
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/inventory/b1/edit', state: { notice } }]}>
+        <Routes>
+          <Route path="/inventory/:id/edit" element={<><EditBottlePage /><StateProbe /></>} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByText(notice)).toBeInTheDocument();
+    expect(seenState).toBeNull();
   });
 });

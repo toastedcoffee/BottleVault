@@ -153,6 +153,15 @@ class ImageProcessorTest {
     }
 
     @Test
+    fun `a large WebP is refused from its header, under WebP's tighter cap`() {
+        // VP8X header declaring a 5000 x 4000 canvas (20 MP): fine for JPEG or PNG,
+        // over the 16 MP WebP cap because the WebP reader cannot subsample.
+        val ex = assertThrows(ApiException::class.java) { processor.process(WebpFixture.vp8xHeader(5000, 4000)) }
+        assertEquals(422, ex.status.value())
+        assertTrue(ex.message!!.contains("5000x4000"), ex.message)
+    }
+
+    @Test
     fun `garbage with a valid signature is unreadable, not a crash`() {
         val fake = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A) + ByteArray(64)
         assertEquals(422, assertThrows(ApiException::class.java) { processor.process(fake) }.status.value())

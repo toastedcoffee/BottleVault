@@ -45,6 +45,10 @@ class ImageProcessor(
     @Value("\${app.images.jpeg-quality:0.85}") private val jpegQuality: Float,
     @Value("\${app.images.max-concurrent:2}") maxConcurrent: Int,
     @Value("\${app.images.slot-wait:10s}") private val slotWait: Duration,
+    // The WebP reader decodes at full size whatever subsampling is asked for
+    // (measured: a 24 MP WebP needs ~80 MB while decoding), so WebP gets a
+    // tighter pixel cap than JPEG and PNG, whose readers really subsample.
+    @Value("\${app.images.max-webp-pixels:16777216}") private val maxWebpPixels: Long = 16_777_216,
 ) {
     private val slots = Semaphore(maxConcurrent)
 
@@ -78,10 +82,11 @@ class ImageProcessor(
                 reader.setInput(stream, true, true)
                 val w = runCatching { reader.getWidth(0) }.getOrElse { throw unreadable }
                 val h = runCatching { reader.getHeight(0) }.getOrElse { throw unreadable }
-                if (w <= 0 || h <= 0 || w > maxSide || h > maxSide || w.toLong() * h > maxPixels) {
+                val pixelCap = if (isWebp(input)) minOf(maxPixels, maxWebpPixels) else maxPixels
+                if (w <= 0 || h <= 0 || w > maxSide || h > maxSide || w.toLong() * h > pixelCap) {
                     throw ApiException(
                         HttpStatus.valueOf(422), "Unprocessable Entity",
-                        "That photo is too large (${w}x$h). Photos up to ${maxPixels / 1_000_000} megapixels are supported.",
+                        "That photo is too large (${w}x$h). Photos up to ${pixelCap / 1_000_000} megapixels are supported.",
                     )
                 }
                 val factor = max(1, ceil(max(w, h) / (2.0 * outputMaxSide)).toInt())
@@ -147,13 +152,17 @@ class ImageProcessor(
     private fun encodeJpeg(img: BufferedImage): ByteArray {
         val writer = ImageIO.getImageWritersByFormatName("jpeg").next()
         val out = ByteArrayOutputStream()
-        ImageIO.createImageOutputStream(out).use { ios ->
-            writer.output = ios
-            val param = writer.defaultWriteParam.apply {
-                compressionMode = ImageWriteParam.MODE_EXPLICIT
-                compressionQuality = jpegQuality
+        try {
+            ImageIO.createImageOutputStream(out).use { ios ->
+                writer.output = ios
+                val param = writer.defaultWriteParam.apply {
+                    compressionMode = ImageWriteParam.MODE_EXPLICIT
+                    compressionQuality = jpegQuality
+                }
+                // null metadata: a plain JFIF header, so nothing from the original survives.
+                writer.write(null, IIOImage(img, null, null), param)
             }
-            writer.write(null, IIOImage(img, null, null), param)
+        } finally {
             writer.dispose()
         }
         return out.toByteArray()
