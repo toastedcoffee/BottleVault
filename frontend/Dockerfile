@@ -21,7 +21,10 @@ ARG SOURCE_URL=https://github.com/toastedcoffee/BottleVault
 ENV VITE_SOURCE_URL=$SOURCE_URL
 RUN npm run build
 
-FROM nginx:alpine
+# Unprivileged nginx: no root master process. It still listens on port 80 —
+# Docker lets containers bind low ports without privileges
+# (net.ipv4.ip_unprivileged_port_start=0), which the stack smoke test checks.
+FROM nginxinc/nginx-unprivileged:alpine
 LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 LABEL org.opencontainers.image.source="https://github.com/toastedcoffee/BottleVault"
 LABEL org.opencontainers.image.title="BottleVault"
@@ -33,4 +36,5 @@ LABEL org.opencontainers.image.title="BottleVault"
 COPY LICENSE COPYRIGHT TRADEMARKS.md /usr/share/doc/bottlevault/
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx/ /etc/nginx/snippets/
 EXPOSE 80

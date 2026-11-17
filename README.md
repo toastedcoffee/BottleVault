@@ -33,9 +33,12 @@ docker compose up -d
 open http://localhost
 ```
 
-The app starts three containers:
+The app starts four containers, none of them running as root:
 - **PostgreSQL** — internal only, not exposed to the host
-- **Spring Boot API** — internal only, health-checked via Actuator
+- **Spring Boot API** — internal only, health-checked via Actuator; its only way
+  out is the egress proxy
+- **Egress proxy** — lets the API reach a short list of HTTPS services (barcode
+  lookups, Cloudflare Turnstile) and nothing else
 - **Nginx + React** — exposed on port 80 (configurable via `PORT` in `.env`)
 
 ### Development Setup
@@ -80,13 +83,18 @@ Pre-built images are published to GitHub Container Registry on every merge to ma
      (e.g. `https://app.example.com`); not needed for plain LAN access
    - `REGISTRATION_ENABLED` — `true` (change to `false` after creating your account)
    - `PORT` — (optional, default `80`)
-4. **Create the data directories** from TrueNAS shell (replace `<pool>` with
-   the name of your pool):
+4. **Create the data directories** from the TrueNAS shell (replace `<pool>`
+   with the name of your pool). The API and web containers run as uid 568, so
+   the directories they write to must belong to it:
    ```bash
-   mkdir -p /mnt/<pool>/configs/stacks/bottlevault/data/postgres
-   mkdir -p /mnt/<pool>/configs/stacks/bottlevault/data/uploads
+   cd /mnt/<pool>/configs/stacks/bottlevault
+   mkdir -p data/postgres data/uploads data/logs/nginx data/logs/api
+   chown -R 568:568 data/uploads data/logs
    ```
    The `uploads/` directory persists bottle photos; back it up alongside `postgres/`.
+   Using a tunnel? Also delete the frontend's `ports:` block and `lan` from its
+   `networks:` (the comments in the compose file say why). Upgrading an
+   existing install: run the same `chown` before deploying the new compose file.
 5. **Deploy** the stack from Dockge
 6. **Register** your account at `http://<server-ip>`
 7. **Lock down** — set `REGISTRATION_ENABLED=false` in Dockge and redeploy

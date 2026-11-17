@@ -6,14 +6,29 @@
 # Dockge: Create a stack called "bottlevault" and paste this in.
 # CLI:    docker compose -f docker-compose.prod.yml up -d
 #
+# BEFORE THE FIRST START: the api and web containers run as uid:gid 568:568,
+# never root. Docker creates a missing bind-mount directory owned by root, which
+# 568 cannot write, so create the writable directories and hand them over first:
+#   mkdir -p data/uploads data/logs/nginx data/logs/api
+#   chown -R 568:568 data/uploads data/logs
+# (Postgres manages its own directory.) Upgrading an existing stack: DEPLOY.md §10.
+#
 # Required environment variables (set in Dockge UI or .env file):
 #   DB_PASSWORD    — database password
 #   JWT_SECRET     — JWT signing key (generate with: openssl rand -base64 48)
 #   TUNNEL_TOKEN   — Cloudflare Tunnel token (from Zero Trust dashboard);
 #                    LAN-only? Delete the tunnel service block instead of setting this
 #
-# Optional environment variables (sensible defaults):
-#   REGISTRATION_ENABLED — allow new user registration (default: true)
+# Optional environment variables (sensible defaults; an empty value counts as unset):
+#   REGISTRATION_MODE    — open | invite | closed. Unset: REGISTRATION_ENABLED decides
+#   REGISTRATION_ENABLED — legacy switch, true = open, false = closed (default: true)
+#   TURNSTILE_SITE_KEY, TURNSTILE_SECRET_KEY — Cloudflare Turnstile on sign-in and
+#                          registration (default: off)
+#   TURNSTILE_EXPECTED_HOSTNAME — the hostname Turnstile tokens must be issued for
+#   IP_HASH_KEY          — key for hashing client IPs in the security log (generate
+#                          like JWT_SECRET). Unset = a random key per start, so the
+#                          hashes change on every restart
+#   PRIVACY_URL          — your privacy notice, linked from the registration form
 #   SWAGGER_ENABLED      — expose Swagger UI at /swagger-ui (default: false)
 #   ALLOWED_ORIGINS      — comma-separated public URLs for CORS (default: none — set when using a tunnel)
 #   PORT                 — host port for the web UI (default: 80)
@@ -25,8 +40,21 @@
 #                          The access log records request line, status, referer, user-agent
 #                          and Cloudflare's country header, with no IP addresses. Error-log
 #                          lines can include a client address — see DEPLOY.md.
-#   POSTGRES_IMAGE       — pin this in production; see DEPLOY.md
-#   CLOUDFLARED_IMAGE    — pin this in production; see DEPLOY.md
+#   API_LOG_PATH         — host path for the API's security log (default: ./data/logs/api).
+#                          Hashed client addresses only, never raw ones; kept 30 days.
+#   BV_EDGE_SUBNET, BV_TUNNEL_IP — the edge network and the tunnel's fixed address
+#                          (defaults 172.29.252.0/24 and 172.29.252.10). Change only if
+#                          the subnet collides with one you already use.
+#   BV_DNS_1, BV_DNS_2   — resolvers for the egress proxy and the tunnel (defaults
+#                          1.1.1.1 and 9.9.9.9). If you run the host guard, its
+#                          allowed-DNS list must name the same two (DEPLOY.md §9).
+#   POSTGRES_IMAGE, CLOUDFLARED_IMAGE, EGRESS_IMAGE — pin these in production; see DEPLOY.md
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   postgres:
@@ -67,46 +95,85 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # The official entrypoint starts as root only to fix the data directory's
+    # ownership, then drops to the postgres user; these five capabilities are
+    # exactly what that needs. Everything else is dropped.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    pids_limit: 256
+    logging: *logging
     networks: [internal]
     restart: unless-stopped
 
   backend:
     image: ghcr.io/toastedcoffee/bottlevault-api:latest
     container_name: bottlevault-api
+    user: "568:568"
     environment:
       DATABASE_URL: jdbc:postgresql://postgres:5432/bottlevault
       DATABASE_USERNAME: bottlevault
       DATABASE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
-      # Set to false after creating your account to lock down self-registration
+      # open | invite | closed. Empty: REGISTRATION_ENABLED decides (true = open).
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-}
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
       # Swagger UI is disabled in prod by default — also blocked at nginx as defense in depth
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
       # Comma-separated allowed origins for CORS on /api/**.
-      # Example: https://cellar.bottlevault.app
-      # Multiple: https://cellar.bottlevault.app,https://bottlevault.app
+      # Example: https://cellar.example.com
       # Required for Cloudflare Tunnel / any public https hostname (the browser's
       # https origin never matches the backend's http origin, so those requests
       # are always CORS-checked). Plain-http LAN access needs no entry here —
       # nginx forwards the Host header with its port intact, so the backend sees
       # those requests as same-origin.
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      TURNSTILE_EXPECTED_HOSTNAME: ${TURNSTILE_EXPECTED_HOSTNAME:-}
+      IP_HASH_KEY: ${IP_HASH_KEY:-}
+      PRIVACY_URL: ${PRIVACY_URL:-}
+      # The API's only way off this host: every outbound call goes through the
+      # egress proxy, which allows a short list of HTTPS hosts and nothing else.
+      EGRESS_PROXY: http://egress:3128
+      # Only the tunnel may vouch for a visitor's address (CF-Connecting-IP).
+      # Must equal the tunnel's ipv4_address below.
+      TRUSTED_PROXY_CIDRS: ${BV_TUNNEL_IP:-172.29.252.10}/32
+      LOG_DIR: /data/logs
       # Must match the container side of the uploads volume below — change both
       # together, or photos are written to the container and lost on recreate.
       UPLOADS_DIR: /data/uploads
-    # Bottle photos live on the host so ZFS snapshots back them up alongside the DB.
+      # Heap follows the container's memory limit; an OutOfMemoryError exits the
+      # JVM so Docker restarts it cleanly instead of leaving it half-alive.
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=70 -XX:+ExitOnOutOfMemoryError
+    # Bottle photos and the security log live on the host so snapshots cover them.
     volumes:
       - ${UPLOADS_PATH:-./data/uploads}:/data/uploads
+      - ${API_LOG_PATH:-./data/logs/api}:/data/logs
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    # Docker refuses a value above the host's CPU count: on a one-CPU host, set 1.
+    cpus: 2
+    # The JVM's threads count against this.
+    pids_limit: 512
+    logging: *logging
     depends_on:
       postgres:
         condition: service_healthy
+      egress:
+        condition: service_started
     # Internal only — frontend (nginx) reaches it at http://backend:8080, nothing external
     expose:
       - "8080"
     # readiness (not plain health) is the semantically correct "can this instance
     # take traffic" probe. Requires management.endpoint.health.probes.enabled and
-    # a SecurityConfig matcher covering /actuator/health/** — both landed earlier
-    # on this branch; see ReadinessProbeIntegrationTest.
+    # a SecurityConfig matcher covering /actuator/health/** — see
+    # ReadinessProbeIntegrationTest.
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health/readiness || exit 1"]
       interval: 15s
@@ -116,13 +183,17 @@ services:
     # Must exceed spring.lifecycle.timeout-per-shutdown-phase (30s) so the JVM
     # finishes draining in-flight requests before Docker escalates to SIGKILL.
     stop_grace_period: 45s
-    networks: [internal]
+    networks: [internal, proxy]
     restart: unless-stopped
 
   frontend:
     image: ghcr.io/toastedcoffee/bottlevault-web:latest
     container_name: bottlevault-web
-    # The only service bound to a host port — serves the React app and proxies /api/ to backend
+    user: "568:568"
+    # Serves the React app and proxies /api/ to the backend. BEHIND A TUNNEL,
+    # DELETE THIS `ports:` BLOCK AND `lan` FROM `networks:` BELOW: a published
+    # port lets anything on your LAN reach nginx without passing Cloudflare and
+    # its bot and rate limits. Keep both only for LAN-only use.
     ports:
       - "${PORT:-80}:80"
     # nginx access and error logs on the host, so request history survives
@@ -131,6 +202,14 @@ services:
     # lines can include a client address. See DEPLOY.md.
     volumes:
       - ${WEB_LOG_PATH:-./data/logs/nginx}:/var/log/nginx
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    pids_limit: 128
+    logging: *logging
     # service_started, NOT service_healthy. The SPA is static and has no runtime
     # dependency on the API to render. Gating it on backend health meant a backend
     # problem took down the very shell that could explain the backend problem, and
@@ -152,7 +231,7 @@ services:
       timeout: 3s
       retries: 3
       start_period: 10s
-    networks: [internal, edge]
+    networks: [internal, edge, lan]
     restart: unless-stopped
 
   # Cloudflare Tunnel — outbound connection to Cloudflare's edge, no ports opened on the host.
@@ -166,16 +245,123 @@ services:
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set TUNNEL_TOKEN from the Cloudflare Zero Trust dashboard, or remove the tunnel service for LAN-only}
+    # Internet-name lookups go to these public resolvers, never the LAN's: the host
+    # guard allows DNS only to an explicit list (DEPLOY.md §9), and this keeps every
+    # private address off it. Compose service names still resolve inside Docker.
+    dns:
+      - ${BV_DNS_1:-1.1.1.1}
+      - ${BV_DNS_2:-9.9.9.9}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    pids_limit: 64
+    logging: *logging
     depends_on:
       frontend:
         condition: service_healthy
-    # `edge` only: cloudflared terminates internet traffic and has no business
-    # reaching Postgres. frontend bridges the two networks and is the sole path in.
-    networks: [edge]
+    # cloudflared reaches nginx on `edge` and Cloudflare on `tunnel_out`, and
+    # nothing else: it terminates internet traffic and has no business reaching
+    # Postgres or the API directly.
+    networks:
+      edge:
+        # Fixed, because the backend trusts CF-Connecting-IP only from this
+        # address (TRUSTED_PROXY_CIDRS above).
+        ipv4_address: ${BV_TUNNEL_IP:-172.29.252.10}
+      tunnel_out: {}
     restart: unless-stopped
 
+  # Outbound HTTPS proxy — the API's only route off this host. It allows CONNECT
+  # to port 443 on the hosts in the config below and nothing else: no private
+  # addresses, no plain HTTP. Refusals show up in `docker logs bottlevault-egress`
+  # as TCP_DENIED. Adding a host is a deliberate change to this file.
+  egress:
+    image: ${EGRESS_IMAGE:-ubuntu/squid:latest}
+    container_name: bottlevault-egress
+    # The image's unprivileged "proxy" user. If you swap EGRESS_IMAGE, use that
+    # image's unprivileged uid:gid instead.
+    user: "13:13"
+    entrypoint: ["squid", "-N", "-f", "/etc/squid/squid.conf"]
+    # Not read_only: Compose injects an inline config by copying it into the
+    # container, which it refuses to do on a read-only root filesystem. The proxy
+    # still runs as an unprivileged user with no capabilities, so the system
+    # directories stay out of its reach.
+    configs:
+      - source: squid_conf
+        target: /etc/squid/squid.conf
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    pids_limit: 64
+    logging: *logging
+    # Internet-name lookups go to these public resolvers, never the LAN's: the host
+    # guard allows DNS only to an explicit list (DEPLOY.md §9), and this keeps every
+    # private address off it. Compose service names still resolve inside Docker.
+    dns:
+      - ${BV_DNS_1:-1.1.1.1}
+      - ${BV_DNS_2:-9.9.9.9}
+    expose:
+      - "3128"
+    networks: [proxy, egress_out]
+    restart: unless-stopped
+
+# internal: true = no route off the host at all. Only tunnel_out and egress_out
+# can leave, and each has exactly one member. IPv6 is off everywhere, so there is
+# no second address family to guard.
 networks:
   internal:
-    driver: bridge
+    internal: true
+    enable_ipv6: false
+  proxy:
+    internal: true
+    enable_ipv6: false
   edge:
-    driver: bridge
+    internal: true
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: ${BV_EDGE_SUBNET:-172.29.252.0/24}
+  tunnel_out:
+    enable_ipv6: false
+  egress_out:
+    enable_ipv6: false
+  # Exists only so the LAN port can be published: Docker publishes ports only on
+  # a network that is not internal. The host guard (DEPLOY.md §9) lets nothing
+  # out of it but replies. Behind a tunnel, remove `lan` from the frontend along
+  # with its `ports:` block.
+  lan:
+    enable_ipv6: false
+
+configs:
+  squid_conf:
+    content: |
+      http_port 3128
+      pid_filename /tmp/squid.pid
+      coredump_dir /tmp
+      cache deny all
+      cache_mem 8 MB
+      access_log stdio:/dev/stdout
+      cache_log /dev/stderr
+      logfile_rotate 0
+      shutdown_lifetime 1 second
+      forwarded_for delete
+      via off
+      # The ICMP helper needs a raw socket, i.e. a capability this container
+      # does not have; without this line it logs a FATAL at every start.
+      pinger_enable off
+
+      # -n: never reverse-resolve an IP-address destination. Without it, a CONNECT
+      # to a bare IP whose PTR record names an allowed host would be let through,
+      # and anyone can set the PTR record of an address they control.
+      acl allowed_hosts dstdomain -n challenges.cloudflare.com api.upcitemdb.com world.openfoodfacts.org api.barcodelookup.com
+      acl https_port port 443
+      acl CONNECT method CONNECT
+      acl private_dst dst 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4 ::1 fc00::/7 fe80::/10
+
+      http_access deny !CONNECT
+      http_access deny !https_port
+      http_access deny private_dst
+      http_access allow CONNECT allowed_hosts
+      http_access deny all

@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2025-2026 toastedcoffee
+name: Stack smoke test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/Dockerfile'
+      - 'frontend/Dockerfile'
+      - 'frontend/nginx.conf'
+      - 'frontend/nginx/**'
+      - 'docker-compose.prod.yml'
+      - 'docker-compose.yml'
+      - 'egress/**'
+      - 'scripts/ci/stack-smoke.sh'
+      - '.github/workflows/stack-smoke.yml'
+      - '.dockerignore'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the images under the names the prod compose file uses
+        run: |
+          docker build -f backend/Dockerfile -t ghcr.io/toastedcoffee/bottlevault-api:latest .
+          docker build -f frontend/Dockerfile -t ghcr.io/toastedcoffee/bottlevault-web:latest .
+      - name: Run the smoke test
+        run: bash scripts/ci/stack-smoke.sh

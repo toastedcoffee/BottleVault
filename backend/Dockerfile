@@ -21,5 +21,14 @@ WORKDIR /app
 # to it. Both halves are load-bearing: do not remove either.
 COPY LICENSE COPYRIGHT TRADEMARKS.md /usr/share/doc/bottlevault/
 COPY --from=build /app/build/libs/*.jar app.jar
+# Never run as root. 568:568 is TrueNAS's conventional "apps" user. The data
+# directories are created here and owned by it, so a *named* volume mounted over
+# them starts out writable. A bind mount keeps the host directory's owner — see
+# the chown step in docker-compose.prod.yml's header.
+RUN addgroup -S -g 568 apps \
+ && adduser -S -D -H -u 568 -G apps -s /sbin/nologin bottlevault \
+ && mkdir -p /data/uploads /data/logs \
+ && chown -R 568:568 /data
+USER 568:568
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
