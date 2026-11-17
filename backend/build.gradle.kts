@@ -28,6 +28,11 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    // Image decoding beyond the JDK's own readers: WebP, and CMYK/YCCK JPEGs (BSD-3-Clause)
+    implementation("com.twelvemonkeys.imageio:imageio-jpeg:3.15.3")
+    implementation("com.twelvemonkeys.imageio:imageio-webp:3.15.3")
+    // EXIF orientation (Apache-2.0; pulls in Adobe xmpcore, BSD-3-Clause)
+    implementation("com.drewnoakes:metadata-extractor:2.21.0")
     // Bounded in-memory maps for rate limiting (Apache-2.0; version from the Boot BOM)
     implementation("com.github.ben-manes.caffeine:caffeine")
 
