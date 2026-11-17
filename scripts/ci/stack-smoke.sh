@@ -170,6 +170,49 @@ check "nginx version is not disclosed" no_version
 peer_header() { docker exec bottlevault-web grep -q 'proxy_set_header X-BV-Peer-IP \$remote_addr' /etc/nginx/snippets/bv-proxy.conf; }
 check "nginx sets X-BV-Peer-IP" peer_header
 
+# A real photo upload through nginx's upload route: the API decodes and
+# re-encodes it as 568 on a read-only root with only /tmp writable, and the
+# result lands on the uploads mount. Runs before the auth burst below, which
+# exhausts this probe's sign-in allowance.
+SMOKE_JPEG_B64='/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQ
+Dg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4N
+DhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7
+Ozv/wAARCAAYACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QA
+tRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkK
+FhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJ
+ipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx
+8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcF
+BAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygp
+KjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJma
+oqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oA
+DAMBAAIRAxEAPwDk6KKK8c9oKKKKACiiigAooooA/9k='
+photo_upload_works() {
+  local out
+  out=$(docker run --rm --network "${PROJECT}_edge" -e JPEG_B64="$SMOKE_JPEG_B64" --entrypoint sh "$CURL" -c '
+    set -e
+    api=http://frontend/api
+    printf %s "$JPEG_B64" | base64 -d > /tmp/p.jpg
+    id_of() { sed -n "s/^{\"id\":\"\([^\"]*\)\".*/\1/p"; }
+    json="Content-Type: application/json"
+    tok=$(curl -sf -X POST -H "$json" \
+      -d "{\"email\":\"photo-smoke@example.com\",\"password\":\"smoke-password-1\"}" \
+      $api/auth/register | sed -n "s/.*\"accessToken\":\"\([^\"]*\)\".*/\1/p")
+    auth="Authorization: Bearer $tok"
+    brand=$(curl -sf -X POST -H "$auth" -H "$json" -d "{\"name\":\"Smoke Distillery\"}" $api/brands | id_of)
+    product=$(curl -sf -X POST -H "$auth" -H "$json" \
+      -d "{\"name\":\"Smoke Bourbon\",\"brandId\":\"$brand\",\"type\":\"BOURBON\"}" $api/products | id_of)
+    bottle=$(curl -sf -X POST -H "$auth" -H "$json" -d "{\"productId\":\"$product\"}" $api/bottles | id_of)
+    up=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "$auth" \
+      -F "file=@/tmp/p.jpg;type=image/jpeg" $api/bottles/$bottle/image)
+    get=$(curl -s -o /tmp/back -w "%{http_code} %{content_type}" -H "$auth" $api/bottles/$bottle/image)
+    echo "upload=$up get=$get bottle=$bottle"' 2>&1)
+  echo "INFO  $out"
+  [[ "$out" == *"upload=200 get=200 image/jpeg"* ]] || return 1
+  # The stored file is on the host-side uploads mount, owned by the API's user.
+  [ -n "$(docker exec bottlevault-api find /data/uploads -type f -user 568 -name '*.jpg' 2>/dev/null)" ]
+}
+check "photo upload is re-encoded and stored by the non-root API" photo_upload_works
+
 auth_burst_hits_nginx_limit() {
   local codes
   codes=$(docker run --rm --network "${PROJECT}_edge" --entrypoint sh "$CURL" -c '
