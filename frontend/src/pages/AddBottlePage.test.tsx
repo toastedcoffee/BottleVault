@@ -8,6 +8,7 @@ import { useBrands, useCreateBrand } from '../hooks/useBrands';
 import { useProducts, useCreateProduct } from '../hooks/useProducts';
 import { useCreateBottle, useUploadBottleImage } from '../hooks/useBottles';
 import { useBarcodeLookup } from '../hooks/useBarcode';
+import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 
 vi.mock('../hooks/useBrands', () => ({ useBrands: vi.fn(), useCreateBrand: vi.fn() }));
 vi.mock('../hooks/useProducts', () => ({ useProducts: vi.fn(), useCreateProduct: vi.fn() }));
@@ -101,5 +102,39 @@ describe('AddBottlePage validation order', () => {
     submit();
     await waitFor(() => expect(createProduct.mutateAsync).toHaveBeenCalled());
     expect(createProduct.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ barcode: undefined }));
+  });
+});
+
+function axiosError(status: number, data: unknown = {}): AxiosError {
+  const config = { headers: {} } as InternalAxiosRequestConfig;
+  const response = { status, data, headers: {}, statusText: '', config } as AxiosResponse;
+  return new AxiosError(`Request failed with status code ${status}`, 'ERR_BAD_REQUEST', config, null, response);
+}
+
+describe('AddBottlePage error messages', () => {
+  it("shows the server's reason when the bottle is refused", async () => {
+    startNewProductWithNewBrand();
+    fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: 'Small Batch' } });
+    createBottle.mutateAsync.mockRejectedValue(axiosError(400, { message: 'notes: must be at most 5000 characters' }));
+    submit();
+    expect(await screen.findByText('notes: must be at most 5000 characters')).toBeInTheDocument();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('opens the edit page with the reason when the bottle saved but its photo did not', async () => {
+    const upload = mutation(undefined);
+    upload.mutateAsync.mockRejectedValue(axiosError(415, { message: 'Only JPEG, PNG and WebP photos are supported.' }));
+    vi.mocked(useUploadBottleImage).mockReturnValue(upload as unknown as ReturnType<typeof useUploadBottleImage>);
+    startNewProductWithNewBrand();
+    fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: 'Small Batch' } });
+    fireEvent.change(screen.getByLabelText('Photo'), {
+      target: { files: [new File(['x'], 'label.gif', { type: 'image/gif' })] },
+    });
+    submit();
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith('/inventory/b-new/edit', {
+        state: { notice: 'Bottle saved, but the photo was not: Only JPEG, PNG and WebP photos are supported.' },
+      })
+    );
   });
 });

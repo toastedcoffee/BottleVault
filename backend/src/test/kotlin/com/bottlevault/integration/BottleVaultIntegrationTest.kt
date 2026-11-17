@@ -295,17 +295,12 @@ class BottleVaultIntegrationTest : AbstractPostgresIntegrationTest() {
     fun `can upload, retrieve, and delete a bottle image`() {
         val bottleId = createBottle(searchName = "Old No. 7", token = accessToken)
 
-        // Minimal valid PNG (8x8 transparent) — 1px would also work, this just exercises bytes
-        val png = byteArrayOf(
-            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // signature
-            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-            0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4.toByte(), 0x89.toByte(),
-            0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54,
-            0x78, 0x9C.toByte(), 0x62, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01,
-            0x0D, 0x0A, 0x2D, 0xB4.toByte(),
-            0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE.toByte(), 0x42, 0x60, 0x82.toByte()
-        )
+        // A real 8x8 PNG with transparency; it is decoded and stored as a JPEG.
+        val png = java.io.ByteArrayOutputStream().also { out ->
+            val img = java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+            img.createGraphics().apply { color = java.awt.Color(0, 0, 0, 0); fillRect(0, 0, 8, 8); dispose() }
+            javax.imageio.ImageIO.write(img, "png", out)
+        }.toByteArray()
         val file = MockMultipartFile("file", "test.png", "image/png", png)
 
         val uploadResult = mockMvc.perform(
@@ -320,16 +315,21 @@ class BottleVaultIntegrationTest : AbstractPostgresIntegrationTest() {
         val imagePath = objectMapper.readTree(uploadResult.response.contentAsString)["imagePath"].asText()
         assertTrue(imagePath.startsWith("bottles/"), "imagePath should be relative under bottles/")
 
-        // GET returns the same bytes with image/png content type
+        assertTrue(imagePath.endsWith(".jpg"), "every stored photo is a re-encoded JPEG")
+
+        // GET returns the re-encoded photo: a JPEG, whatever was uploaded
         val getResult = mockMvc.perform(
             get("/api/bottles/$bottleId/image")
                 .header("Authorization", "Bearer $accessToken")
         )
             .andExpect(status().isOk)
-            .andExpect(header().string("Content-Type", "image/png"))
+            .andExpect(header().string("Content-Type", "image/jpeg"))
             .andReturn()
 
-        assertEquals(png.size, getResult.response.contentAsByteArray.size)
+        assertTrue(
+            getResult.response.contentAsByteArray.let { it.size > 2 && it[0] == 0xFF.toByte() && it[1] == 0xD8.toByte() },
+            "the stored file is a JPEG"
+        )
 
         // DELETE clears the path
         mockMvc.perform(
@@ -352,12 +352,14 @@ class BottleVaultIntegrationTest : AbstractPostgresIntegrationTest() {
         val bottleId = createBottle(searchName = "Old No. 7", token = accessToken)
         val file = MockMultipartFile("file", "evil.txt", "text/plain", "not an image".toByteArray())
 
+        // The bytes decide: this is not a JPEG, PNG or WebP, so 415 (was a 400 on
+        // the claimed Content-Type before photos were re-encoded).
         mockMvc.perform(
             multipart("/api/bottles/$bottleId/image")
                 .file(file)
                 .header("Authorization", "Bearer $accessToken")
         )
-            .andExpect(status().isBadRequest)
+            .andExpect(status().isUnsupportedMediaType)
     }
 
     @Test

@@ -80,6 +80,16 @@ object UploadsMount {
             .replace("\\134", "\\")
 }
 
+/** Whether the API can actually write to the uploads directory; null when it can. */
+object UploadsWritability {
+    fun problem(dir: Path): String? = runCatching {
+        Files.createDirectories(dir)
+        val probe = dir.resolve(".write-probe-${java.util.UUID.randomUUID()}")
+        Files.writeString(probe, "x")
+        Files.delete(probe)
+    }.exceptionOrNull()?.toString()
+}
+
 /**
  * Warns once at startup when bottle photos are being written somewhere that a
  * container recreate will erase — a volume mounted at the wrong path, or no
@@ -99,13 +109,22 @@ class UploadsMountCheck(
 
     @EventListener(ApplicationReadyEvent::class)
     fun warnIfNotPersistent() {
+        val uploadsDir: Path = Paths.get(uploadsDirRaw).toAbsolutePath().normalize()
+        // Checked first, so it runs whatever the mount check below decides.
+        UploadsWritability.problem(uploadsDir)?.let { problem ->
+            log.error(
+                "Bottle photos cannot be written to {} ({}). Every upload will fail. On the host, give the " +
+                    "API's user ownership of the uploads directory: `chown -R {} <your uploads directory>`.",
+                uploadsDir, problem, processOwner(),
+            )
+        }
+
         val mountinfo = Paths.get("/proc/self/mountinfo")
         if (!Files.isReadable(mountinfo)) {
             // Not Linux, or a kernel without /proc: nothing to check against.
             log.debug("Skipping uploads mount check: {} is not readable", mountinfo)
             return
         }
-        val uploadsDir: Path = Paths.get(uploadsDirRaw).toAbsolutePath().normalize()
         val lines = runCatching { Files.readAllLines(mountinfo) }.getOrElse {
             log.debug("Skipping uploads mount check: could not read {}", mountinfo, it)
             return
@@ -121,4 +140,12 @@ class UploadsMountCheck(
             uploadsDir
         )
     }
+
+    /** "uid:gid" of this process on Linux, or a placeholder where that is not available. */
+    private fun processOwner(): String = runCatching {
+        val unix = Class.forName("com.sun.security.auth.module.UnixSystem").getDeclaredConstructor().newInstance()
+        val uid = unix.javaClass.getMethod("getUid").invoke(unix)
+        val gid = unix.javaClass.getMethod("getGid").invoke(unix)
+        "$uid:$gid"
+    }.getOrDefault("<uid>:<gid>")
 }

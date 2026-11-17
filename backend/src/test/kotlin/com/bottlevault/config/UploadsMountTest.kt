@@ -94,4 +94,14 @@ class UploadsMountTest {
         // Nothing to prove persistence with: warn rather than stay silent.
         assertFalse(UploadsMount.isPersistent("/data/uploads", emptyList()))
     }
+
+    @Test
+    fun `a directory that cannot be written is reported`(@org.junit.jupiter.api.io.TempDir tmp: java.nio.file.Path) {
+        val notADir = tmp.resolve("file").also { java.nio.file.Files.writeString(it, "x") }
+        org.junit.jupiter.api.Assertions.assertNotNull(UploadsWritability.problem(notADir.resolve("uploads")))
+        org.junit.jupiter.api.Assertions.assertNull(UploadsWritability.problem(tmp))
+        // The probe leaves nothing behind.
+        val left = java.nio.file.Files.list(tmp).use { files -> files.map { it.fileName.toString() }.toList() }
+        org.junit.jupiter.api.Assertions.assertEquals(listOf("file"), left)
+    }
 }

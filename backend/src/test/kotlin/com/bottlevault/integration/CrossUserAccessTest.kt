@@ -74,6 +74,9 @@ class CrossUserAccessTest : AbstractPostgresIntegrationTest() {
     private lateinit var intruderBottleId: String
     private lateinit var ownerImagePath: String
     private lateinit var ownerBottleSnapshot: String
+    // The owner's photo as stored and served. Uploads are re-encoded, so this is
+    // not the uploaded OWNER_IMAGE bytes; it is what must never change or leak.
+    private lateinit var ownerStoredImage: ByteArray
 
     /** label -> text that identifies the owner's data; none may appear in a response to anyone else. */
     private lateinit var ownerFingerprints: Map<String, String>
@@ -116,6 +119,9 @@ class CrossUserAccessTest : AbstractPostgresIntegrationTest() {
                 .file(MockMultipartFile("file", "owner.png", "image/png", OWNER_IMAGE))
                 .bearer(owner.token)
         ).andExpect(status().isOk)
+        ownerStoredImage = mockMvc.perform(get("/api/bottles/$ownerBottleId/image").bearer(owner.token))
+            .andExpect(status().isOk)
+            .andReturn().response.contentAsByteArray
 
         val view = mockMvc.perform(get("/api/bottles/$ownerBottleId").bearer(owner.token))
             .andExpect(status().isOk)
@@ -213,7 +219,7 @@ class CrossUserAccessTest : AbstractPostgresIntegrationTest() {
                 val response = mockMvc.perform(request).andReturn().response
                 assertTrue(response.status in 400..499, "$who GET $probe should be a client error, was ${response.status}")
                 assertFalse(
-                    response.contentAsByteArray.contentEquals(OWNER_IMAGE),
+                    response.contentAsByteArray.contentEquals(ownerStoredImage),
                     "$who GET $probe returned the owner's image bytes"
                 )
             }
@@ -511,7 +517,7 @@ class CrossUserAccessTest : AbstractPostgresIntegrationTest() {
         val image = mockMvc.perform(get("/api/bottles/$ownerBottleId/image").bearer(owner.token))
             .andExpect(status().isOk)
             .andReturn().response.contentAsByteArray
-        assertContentEquals(OWNER_IMAGE, image, "the owner's image changed")
+        assertContentEquals(ownerStoredImage, image, "the owner's image changed")
     }
 
     private fun assertRejectedWithoutValidToken(request: () -> RequestBuilder) {
@@ -621,18 +627,23 @@ class CrossUserAccessTest : AbstractPostgresIntegrationTest() {
             "rating": 1, "storageLocation": "overwritten"
         }"""
 
-        val OWNER_IMAGE = byteArrayOf(
-            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-            0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4.toByte(), 0x89.toByte(),
-            0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54,
-            0x78, 0x9C.toByte(), 0x62, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01,
-            0x0D, 0x0A, 0x2D, 0xB4.toByte(),
-            0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE.toByte(), 0x42, 0x60, 0x82.toByte()
-        )
+        // A real, decodable PNG: uploads are decoded and re-encoded, so a
+        // hand-assembled byte string that no decoder accepts would be refused (422).
+        val OWNER_IMAGE: ByteArray = java.io.ByteArrayOutputStream().also { out ->
+            val img = java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+            img.createGraphics().apply { color = java.awt.Color(0x2E7D32); fillRect(0, 0, 8, 8); dispose() }
+            javax.imageio.ImageIO.write(img, "png", out)
+        }.toByteArray()
 
-        /** Different length and content from [OWNER_IMAGE], so a swap is detectable. */
-        val INTRUDER_IMAGE = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01, 0x02, 0x03)
+        /**
+         * A real, decodable photo that differs from [OWNER_IMAGE] (size and colour),
+         * so that if an ownership bug let it through, the re-encoded result would
+         * replace the owner's photo and the comparison would catch the swap.
+         */
+        val INTRUDER_IMAGE: ByteArray = java.io.ByteArrayOutputStream().also { out ->
+            val img = java.awt.image.BufferedImage(16, 9, java.awt.image.BufferedImage.TYPE_INT_RGB)
+            img.createGraphics().apply { color = java.awt.Color.MAGENTA; fillRect(0, 0, 16, 9); dispose() }
+            javax.imageio.ImageIO.write(img, "png", out)
+        }.toByteArray()
     }
 }

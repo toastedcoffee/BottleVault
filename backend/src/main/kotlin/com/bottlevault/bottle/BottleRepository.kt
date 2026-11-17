@@ -45,6 +45,13 @@ interface BottleRepository : JpaRepository<Bottle, UUID> {
 
     fun findByIdAndUserId(id: UUID, userId: UUID): Bottle?
 
+    /** Total size of one user's stored photos, for the photo storage quota. */
+    @Query("SELECT COALESCE(SUM(b.imageBytes), 0) FROM Bottle b WHERE b.user.id = :userId")
+    fun sumImageBytesByUserId(userId: UUID): Long
+
+    /** Photos uploaded before re-encoding existed (LegacyImageReprocessor). */
+    fun findByImagePathIsNotNullAndImageBytesIsNull(): List<Bottle>
+
     // --- Statistics queries ---
 
     fun countByUserId(userId: UUID): Long

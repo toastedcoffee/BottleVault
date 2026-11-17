@@ -12,6 +12,7 @@ import type { BottleStatus } from '../types/bottle';
 import type { AlcoholType } from '../types/product';
 import { Camera, ArrowLeft, Plus } from 'lucide-react';
 import { normalizeBarcodeInput, BARCODE_INPUT_ERROR } from '../lib/barcode';
+import { describeApiError } from '../api/client';
 
 // html5-qrcode is heavy and only needed once the user opens the scanner, so
 // BarcodeScanner is loaded on demand rather than bundled with this page.
@@ -103,8 +104,8 @@ export default function AddBottlePage() {
           setIsCreatingProduct(true);
         }
       },
-      onError: () => {
-        setError('Barcode lookup failed. You can fill in the product details manually.');
+      onError: (err) => {
+        setError(describeApiError(err, 'Barcode lookup failed. You can fill in the product details manually.'));
         setIsCreatingProduct(true);
       },
     });
@@ -178,16 +179,19 @@ export default function AddBottlePage() {
       if (imageFile) {
         try {
           await uploadImage.mutateAsync({ id: bottle.id, file: imageFile });
-        } catch {
-          // Bottle is already created; surface a soft warning but still navigate.
-          setError('Bottle saved, but image upload failed. You can try again from the edit page.');
+        } catch (uploadErr) {
+          // The bottle exists already. Open its edit page with the reason, where
+          // the photo can be tried again.
+          navigate(`/inventory/${bottle.id}/edit`, {
+            state: { notice: `Bottle saved, but the photo was not: ${describeApiError(uploadErr)}` },
+          });
+          return;
         }
       }
 
       navigate('/inventory');
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to add bottle';
-      setError(message);
+      setError(describeApiError(err, 'Failed to add bottle'));
     }
   };
 
@@ -505,8 +509,9 @@ export default function AddBottlePage() {
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-text-mid mb-1">Photo</label>
+              <label htmlFor="bottle-photo" className="block text-sm font-medium text-text-mid mb-1">Photo</label>
               <input
+                id="bottle-photo"
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 onChange={handleImageChange}
