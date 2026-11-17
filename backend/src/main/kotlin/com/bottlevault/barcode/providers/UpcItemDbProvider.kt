@@ -5,20 +5,22 @@ package com.bottlevault.barcode.providers
 import com.bottlevault.barcode.AbvParser
 import com.bottlevault.barcode.BarcodeProvider
 import com.bottlevault.barcode.dto.ExternalProductData
+import com.bottlevault.common.security.OutboundHttp
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
-import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
 
 @Component
-class UpcItemDbProvider : BarcodeProvider {
+class UpcItemDbProvider(outboundHttp: OutboundHttp) : BarcodeProvider {
     override val source = "upcitemdb"
     override val priority = 10
     override val isEnabled = true
 
     private val log = LoggerFactory.getLogger(javaClass)
-    private val restClient = RestClient.create()
+    // Through the egress proxy (when configured), with connect and read
+    // timeouts, so a slow provider cannot hold request threads.
+    private val restClient = outboundHttp.restClient()
 
     override fun lookup(barcode: String): ExternalProductData? {
         return try {
