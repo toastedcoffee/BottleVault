@@ -11,6 +11,7 @@ import InlineError from '../components/common/InlineError';
 import type { BottleStatus } from '../types/bottle';
 import type { AlcoholType } from '../types/product';
 import { Camera, ArrowLeft, Plus } from 'lucide-react';
+import { normalizeBarcodeInput, BARCODE_INPUT_ERROR } from '../lib/barcode';
 
 // html5-qrcode is heavy and only needed once the user opens the scanner, so
 // BarcodeScanner is loaded on demand rather than bundled with this page.
@@ -120,16 +121,14 @@ export default function AddBottlePage() {
       if (isCreatingProduct) {
         let brandId = selectedBrandId;
 
-        if (isCreatingBrand) {
-          if (!newBrandName.trim()) {
-            setError('Brand name is required');
-            return;
-          }
-          const brand = await createBrand.mutateAsync({ name: newBrandName, country: newBrandCountry || undefined });
-          brandId = brand.id;
+        // Everything is checked before the first write. Brands go into the
+        // shared catalog, so one created ahead of a rejected product would be
+        // left behind as an orphan.
+        if (isCreatingBrand && !newBrandName.trim()) {
+          setError('Brand name is required');
+          return;
         }
-
-        if (!brandId) {
+        if (!isCreatingBrand && !brandId) {
           setError('Please select or create a brand');
           return;
         }
@@ -137,12 +136,22 @@ export default function AddBottlePage() {
           setError('Product name is required');
           return;
         }
+        const barcodeInput = normalizeBarcodeInput(newProductBarcode);
+        if (!barcodeInput.valid) {
+          setError(BARCODE_INPUT_ERROR);
+          return;
+        }
+
+        if (isCreatingBrand) {
+          const brand = await createBrand.mutateAsync({ name: newBrandName, country: newBrandCountry || undefined });
+          brandId = brand.id;
+        }
 
         const product = await createProduct.mutateAsync({
           name: newProductName,
           brandId,
           type: newProductType,
-          barcode: newProductBarcode || undefined,
+          barcode: barcodeInput.barcode,
           subtype: newProductSubtype || undefined,
           size: newProductSize || undefined,
           abv: newProductAbv ? Number(newProductAbv) : undefined,
@@ -338,8 +347,9 @@ export default function AddBottlePage() {
               {/* New product fields */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-text-mid mb-1">Product Name</label>
+                  <label htmlFor="new-product-name" className="block text-sm font-medium text-text-mid mb-1">Product Name</label>
                   <input
+                    id="new-product-name"
                     type="text"
                     value={newProductName}
                     onChange={(e) => setNewProductName(e.target.value)}
@@ -391,9 +401,11 @@ export default function AddBottlePage() {
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-text-mid mb-1">Barcode</label>
+                  <label htmlFor="new-product-barcode" className="block text-sm font-medium text-text-mid mb-1">Barcode</label>
                   <input
+                    id="new-product-barcode"
                     type="text"
+                    inputMode="numeric"
                     value={newProductBarcode}
                     onChange={(e) => setNewProductBarcode(e.target.value)}
                     placeholder="UPC/EAN barcode"
