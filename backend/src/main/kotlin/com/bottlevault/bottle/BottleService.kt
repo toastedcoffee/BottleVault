@@ -5,12 +5,16 @@ package com.bottlevault.bottle
 import com.bottlevault.auth.UserRepository
 import com.bottlevault.bottle.dto.*
 import com.bottlevault.common.exception.AccessDeniedException
+import com.bottlevault.common.exception.ApiException
 import com.bottlevault.common.exception.ResourceNotFoundException
 import com.bottlevault.common.model.AlcoholType
 import com.bottlevault.common.model.BottleStatus
+import com.bottlevault.common.security.SecurityEvents
 import com.bottlevault.product.ProductRepository
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -22,7 +26,9 @@ class BottleService(
     private val bottleRepository: BottleRepository,
     private val productRepository: ProductRepository,
     private val userRepository: UserRepository,
-    private val bottleImageService: BottleImageService
+    private val bottleImageService: BottleImageService,
+    private val securityEvents: SecurityEvents,
+    @Value("\${app.limits.max-bottles-per-user:2500}") private val maxBottlesPerUser: Long,
 ) {
     fun getBottles(
         userId: UUID,
@@ -64,6 +70,12 @@ class BottleService(
 
     @Transactional
     fun createBottle(request: BottleCreateRequest, userId: UUID): BottleResponse {
+        // Two concurrent creates can both pass this check; the overshoot is a
+        // bottle or two, which is fine for a cap meant to stop runaway growth.
+        if (bottleRepository.countByUserId(userId) >= maxBottlesPerUser) {
+            securityEvents.emit("quota.exceeded", userId = userId, attrs = mapOf("kind" to "bottles"))
+            throw ApiException(HttpStatus.valueOf(422), "Quota Exceeded", "You've reached the limit of $maxBottlesPerUser bottles.")
+        }
         val product = productRepository.findById(UUID.fromString(request.productId))
             .orElseThrow { ResourceNotFoundException("Product not found") }
         val user = userRepository.findById(userId)

@@ -12,6 +12,7 @@ import type { BottleStatus } from '../types/bottle';
 import type { AlcoholType } from '../types/product';
 import { Camera, ArrowLeft, Plus } from 'lucide-react';
 import { normalizeBarcodeInput, BARCODE_INPUT_ERROR } from '../lib/barcode';
+import axios from 'axios';
 import { describeApiError } from '../api/client';
 
 // html5-qrcode is heavy and only needed once the user opens the scanner, so
@@ -25,6 +26,18 @@ const ALCOHOL_TYPES: AlcoholType[] = [
   'PILSNER', 'WHEAT_BEER', 'LIQUEUR', 'AMARO', 'VERMOUTH', 'ABSINTHE',
   'MEZCAL', 'SAKE', 'OTHER',
 ];
+
+/**
+ * The barcode lookup budget is per day, so for a 429 the server's own sentence
+ * ("... try again tomorrow") reads better than a countdown in minutes.
+ */
+function describeLookupError(err: unknown): string {
+  if (axios.isAxiosError(err) && err.response?.status === 429) {
+    const message = (err.response.data as { message?: unknown } | undefined)?.message;
+    if (typeof message === 'string' && message) return message;
+  }
+  return describeApiError(err, 'Barcode lookup failed. You can fill in the product details manually.');
+}
 
 export default function AddBottlePage() {
   const navigate = useNavigate();
@@ -105,7 +118,7 @@ export default function AddBottlePage() {
         }
       },
       onError: (err) => {
-        setError(describeApiError(err, 'Barcode lookup failed. You can fill in the product details manually.'));
+        setError(describeLookupError(err));
         setIsCreatingProduct(true);
       },
     });

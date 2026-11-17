@@ -92,6 +92,21 @@ app:
       # Per account: failed sign-ins before a cool-down.
       account-failures: 10
       account-window: 15m
+    # Per signed-in user (S4).
+    user:
+      uploads-per-hour: 60
+      # Only lookups that reach an external provider count; local and cached hits are free.
+      barcode-lookups-per-day: 30
+    # For the whole instance: providers' free tiers are per IP, shared by every user.
+    provider:
+      # UPCitemdb's free tier allows about 100 lookups a day for the whole IP.
+      upcitemdb-per-day: 90
+      openfoodfacts-per-day: 1000
+      barcodelookup-per-day: 1000
+  limits:
+    max-bottles-per-user: 2500
+    # 500 MB of re-encoded photos (typically 300-600 KB each).
+    max-image-bytes-per-user: 524288000
   security:
     # Hash key for IPs and emails in the security log (IP_HASH_KEY). Unset: a
     # random key per run, so hashes do not match across restarts.
