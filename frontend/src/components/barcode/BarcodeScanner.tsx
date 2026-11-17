@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeScannerState, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Camera, X } from 'lucide-react';
 import InlineError from '../common/InlineError';
 
@@ -93,7 +93,18 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
     const timer = setTimeout(() => {
       if (!mounted) return;
 
-      const scanner = new Html5Qrcode(scannerId);
+      // Retail product barcodes only. With no list the library decodes every
+      // format, QR included, and a back-label QR code (a URL) would be sent to
+      // the barcode lookup.
+      const scanner = new Html5Qrcode(scannerId, {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+        ],
+        verbose: false,
+      });
       scannerRef.current = scanner;
 
       scanner

@@ -12,6 +12,8 @@ const mockScanner = vi.hoisted(() => ({
   startError: null as unknown,
   resolveStart: null as (() => void) | null,
   stopCalls: 0,
+  // The config each Html5Qrcode was constructed with.
+  constructorConfigs: [] as unknown[],
 }));
 
 // Mirrors the real html5-qrcode behavior that matters here: stop() throws
@@ -26,8 +28,21 @@ vi.mock('html5-qrcode', () => {
     PAUSED: 3,
   } as const;
 
+  // The real enum's numeric values (node_modules/html5-qrcode/esm/core.d.ts).
+  const Html5QrcodeSupportedFormats = {
+    QR_CODE: 0,
+    EAN_13: 9,
+    EAN_8: 10,
+    UPC_A: 14,
+    UPC_E: 15,
+  } as const;
+
   class Html5Qrcode {
     private state: number = Html5QrcodeScannerState.NOT_STARTED;
+
+    constructor(_elementId: string, config?: unknown) {
+      mockScanner.constructorConfigs.push(config);
+    }
 
     start(): Promise<void> {
       if (mockScanner.startBehavior === 'reject') {
@@ -68,7 +83,7 @@ vi.mock('html5-qrcode', () => {
     }
   }
 
-  return { Html5Qrcode, Html5QrcodeScannerState };
+  return { Html5Qrcode, Html5QrcodeScannerState, Html5QrcodeSupportedFormats };
 });
 
 describe('BarcodeScanner', () => {
@@ -77,6 +92,18 @@ describe('BarcodeScanner', () => {
     mockScanner.startError = null;
     mockScanner.resolveStart = null;
     mockScanner.stopCalls = 0;
+    mockScanner.constructorConfigs = [];
+  });
+
+  it('decodes retail product barcodes only, never QR codes', async () => {
+    render(<BarcodeScanner onScan={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() => expect(mockScanner.constructorConfigs).toHaveLength(1));
+    // EAN-13, EAN-8, UPC-A, UPC-E. A back-label QR code decodes to a URL, which
+    // is not a product barcode and must never be sent to the lookup.
+    expect(mockScanner.constructorConfigs[0]).toEqual({
+      formatsToSupport: [9, 10, 14, 15],
+      verbose: false,
+    });
   });
 
   it('shows re-enable guidance and closes cleanly when camera permission is denied', async () => {

@@ -40,7 +40,9 @@ class UpcItemDbProvider : BarcodeProvider {
                 categories = item.category?.takeIf { it.isNotBlank() }
             )
         } catch (e: RestClientException) {
-            log.warn("UPCitemdb lookup failed for {}: {}", barcode, e.message)
+            // The exception text can carry the request URL (BarcodeLookup's has the API
+            // key in it), so only its type is logged.
+            log.warn("UPCitemdb lookup failed for {}: {}", barcode, e.javaClass.simpleName)
             null
         }
     }

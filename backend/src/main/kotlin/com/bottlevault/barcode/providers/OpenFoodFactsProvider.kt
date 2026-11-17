@@ -40,7 +40,9 @@ class OpenFoodFactsProvider : BarcodeProvider {
                 categories = product.categories?.takeIf { it.isNotBlank() }
             )
         } catch (e: RestClientException) {
-            log.warn("OpenFoodFacts lookup failed for {}: {}", barcode, e.message)
+            // The exception text can carry the request URL (BarcodeLookup's has the API
+            // key in it), so only its type is logged.
+            log.warn("OpenFoodFacts lookup failed for {}: {}", barcode, e.javaClass.simpleName)
             null
         }
     }

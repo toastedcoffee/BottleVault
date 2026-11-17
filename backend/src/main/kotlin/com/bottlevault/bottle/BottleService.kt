@@ -32,7 +32,12 @@ class BottleService(
         page: Int,
         size: Int
     ): PageResponse<BottleResponse> {
-        val pageable = PageRequest.of(page, size, DEFAULT_SORT)
+        // One user's own collection, but still bounded: an unbounded page is an
+        // easy way to make the API load everything at once.
+        val pageSize = size.coerceIn(1, MAX_PAGE_SIZE)
+        // The upper clamp keeps page * pageSize inside Spring Data's Int offset:
+        // past it the offset overflows and the query throws (a 500).
+        val pageable = PageRequest.of(page.coerceIn(0, Int.MAX_VALUE / pageSize), pageSize, DEFAULT_SORT)
 
         val bottlePage = bottleRepository.findFiltered(
             userId = userId,
@@ -116,6 +121,8 @@ class BottleService(
             ?: throw ResourceNotFoundException("Bottle not found")
 
     private companion object {
+        const val MAX_PAGE_SIZE = 100
+
         // The only order the app has ever used. There is deliberately no
         // client-chosen sort: the parameter never had a caller, and the free-form
         // value it took went straight into the JPQL ORDER BY. id breaks

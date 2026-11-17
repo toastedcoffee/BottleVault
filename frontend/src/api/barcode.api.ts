@@ -5,5 +5,6 @@ import type { BarcodeLookupResponse } from '../types/barcode';
 
 export const barcodeApi = {
   lookup: (barcode: string) =>
-    apiClient.get<BarcodeLookupResponse>(`/barcode/${barcode}`).then((r) => r.data),
+    // Encoded so a scanned value can never become a different path or a query.
+    apiClient.get<BarcodeLookupResponse>(`/barcode/${encodeURIComponent(barcode)}`).then((r) => r.data),
 };
