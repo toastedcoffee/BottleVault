@@ -20,6 +20,11 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+      # Every application query gets 15 s (milliseconds here). A search the
+      # database cannot answer quickly is cancelled instead of tying up a
+      # connection. Flyway talks JDBC directly and is not affected, so a long
+      # migration is never cut off mid-deploy.
+      jakarta.persistence.query.timeout: 15000
 
   flyway:
     enabled: true
@@ -43,6 +48,19 @@ server:
   # spring.lifecycle.timeout-per-shutdown-phase above or Docker SIGKILLs the
   # JVM mid-drain and the graceful setting buys nothing.
   shutdown: graceful
+  tomcat:
+    # A client that connects and then sends nothing is dropped after 10 s.
+    connection-timeout: 10s
+    # No endpoint takes a form post; JSON bodies and the photo upload (multipart,
+    # capped separately under spring.servlet.multipart) are not affected.
+    max-http-form-post-size: 256KB
+    # How much of an aborted upload Tomcat reads and discards to keep the
+    # connection reusable; past this it simply closes the connection.
+    max-swallow-size: 2MB
+    threads:
+      # Leaves headroom under a container PID limit such as 512: the JVM's own
+      # threads (GC, JIT, pools) come on top of these.
+      max: 100
 
 app:
   jwt:
