@@ -129,8 +129,12 @@ jobs:
           docker push "ghcr.io/toastedcoffee/bottlevault-web:$TAG"
           docker push "ghcr.io/toastedcoffee/bottlevault-web:$SHA"
       # Report-only for now (exit-code 0): a base-image CVE with no fix must not
-      # block a deploy. Findings land in the repository's Security tab.
+      # block a deploy. Findings land in the repository's Security tab. The images
+      # are already pushed by this point, so a scanner outage (e.g. the vulnerability
+      # database download being rate-limited) must not turn the job red either:
+      # every scan and upload step is continue-on-error.
       - name: Scan the API image
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ghcr.io/toastedcoffee/bottlevault-api:${{ github.sha }}
@@ -140,6 +144,7 @@ jobs:
           ignore-unfixed: true
           exit-code: '0'
       - name: Scan the web image
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ghcr.io/toastedcoffee/bottlevault-web:${{ github.sha }}
@@ -149,11 +154,13 @@ jobs:
           ignore-unfixed: true
           exit-code: '0'
       - name: Upload the API scan
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: trivy-api.sarif
           category: trivy-api
       - name: Upload the web scan
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: trivy-web.sarif
