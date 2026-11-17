@@ -52,6 +52,10 @@ class Bottle(
     @Column(name = "image_path")
     var imagePath: String? = null,
 
+    // Bytes of the stored (re-encoded) photo; null until a legacy photo is reprocessed.
+    @Column(name = "image_bytes")
+    var imageBytes: Long? = null,
+
     @Column(name = "created_at", updatable = false)
     val createdAt: Instant = Instant.now(),
 

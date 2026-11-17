@@ -3,24 +3,29 @@
 package com.bottlevault.bottle
 
 import com.bottlevault.bottle.dto.BottleResponse
+import com.bottlevault.common.exception.ApiException
 import com.bottlevault.common.exception.ResourceNotFoundException
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.core.io.FileSystemResource
 import org.springframework.core.io.Resource
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
+import java.io.IOException
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.time.Instant
 import java.util.UUID
 
 @Service
 class BottleImageService(
     private val bottleRepository: BottleRepository,
+    private val imageProcessor: ImageProcessor,
     @Value("\${app.uploads.dir}") private val uploadsDirRaw: String
 ) {
     private val uploadsDir: Path by lazy {
@@ -30,27 +35,34 @@ class BottleImageService(
     @Transactional
     fun uploadImage(bottleId: UUID, userId: UUID, file: MultipartFile): BottleResponse {
         if (file.isEmpty) throw IllegalArgumentException("File is empty")
-        val contentType = file.contentType ?: throw IllegalArgumentException("Missing content type")
-        val ext = ALLOWED_TYPES[contentType]
-            ?: throw IllegalArgumentException("Unsupported image type: $contentType (allowed: image/jpeg, image/png, image/webp)")
         if (file.size > MAX_BYTES) {
-            throw IllegalArgumentException("File exceeds maximum size of ${MAX_BYTES / 1024 / 1024} MB")
+            throw ApiException(HttpStatus.CONTENT_TOO_LARGE, "Payload Too Large", "Photos must be under ${MAX_BYTES / 1024 / 1024} MB.")
         }
-
+        // Ownership first: a stranger gets the same 404 whatever they upload, and
+        // no image work is done on their behalf.
         val bottle = bottleRepository.findByIdAndUserId(bottleId, userId)
             ?: throw ResourceNotFoundException("Bottle not found")
 
+        // The file's own bytes decide its type; the client's Content-Type and
+        // file name are ignored. What is stored is always a fresh JPEG.
+        val processed = imageProcessor.process(file.bytes)
+
         val userDir = uploadsDir.resolve("bottles").resolve(userId.toString())
-        Files.createDirectories(userDir)
-        val filename = "${UUID.randomUUID()}.$ext"
-        val target = userDir.resolve(filename)
-        file.inputStream.use { input ->
-            Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING)
+        val filename = "${UUID.randomUUID()}.jpg"
+        try {
+            Files.createDirectories(userDir)
+            Files.write(userDir.resolve(filename), processed.jpeg, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+        } catch (e: IOException) {
+            throw if (isStorageFull(e)) {
+                ApiException(HttpStatus.INSUFFICIENT_STORAGE, "Insufficient Storage", "Storage is full right now. Please try again later.")
+            } else {
+                e
+            }
         }
 
         bottle.imagePath?.let { deleteFileIfExists(it) }
-        val relative = "bottles/${userId}/$filename"
-        bottle.imagePath = relative
+        bottle.imagePath = "bottles/$userId/$filename"
+        bottle.imageBytes = processed.jpeg.size.toLong()
         bottle.updatedAt = Instant.now()
         return BottleResponse.from(bottleRepository.save(bottle))
     }
@@ -61,6 +73,7 @@ class BottleImageService(
             ?: throw ResourceNotFoundException("Bottle not found")
         bottle.imagePath?.let { deleteFileIfExists(it) }
         bottle.imagePath = null
+        bottle.imageBytes = null
         bottle.updatedAt = Instant.now()
         return BottleResponse.from(bottleRepository.save(bottle))
     }
@@ -98,14 +111,15 @@ class BottleImageService(
         return if (resolved.startsWith(uploadsDir)) resolved else null
     }
 
+    /** ENOSPC, or a ZFS dataset quota (EDQUOT): the disk cannot take this photo. */
+    private fun isStorageFull(e: IOException): Boolean {
+        val message = (e as? FileSystemException)?.reason ?: e.message ?: return false
+        return message.contains("No space left", ignoreCase = true) || message.contains("quota", ignoreCase = true)
+    }
+
     data class ImageDownload(val resource: Resource, val mediaType: MediaType, val sizeBytes: Long)
 
     companion object {
         private const val MAX_BYTES = 5L * 1024 * 1024
-        private val ALLOWED_TYPES = mapOf(
-            "image/jpeg" to "jpg",
-            "image/png" to "png",
-            "image/webp" to "webp"
-        )
     }
 }
