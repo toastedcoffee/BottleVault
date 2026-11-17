@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { describeApiError } from '../api/client';
 import {
   useBottle,
   useUpdateBottle,
@@ -30,7 +31,12 @@ export default function EditBottlePage() {
   const [notes, setNotes] = useState('');
   const [rating, setRating] = useState('');
   const [storageLocation, setStorageLocation] = useState('');
-  const [error, setError] = useState('');
+  const location = useLocation();
+  // Add Bottle sends people here with a notice when the bottle saved but its
+  // photo did not, so the reason is visible and the upload can be retried.
+  const [error, setError] = useState<string>(
+    () => (location.state as { notice?: string } | null)?.notice ?? ''
+  );
 
   // Populate the form from the fetched bottle when it first loads (and again if
   // a different bottle id is loaded into this mounted component). Done during
@@ -60,8 +66,8 @@ export default function EditBottlePage() {
     setError('');
     try {
       await uploadImage.mutateAsync({ id: id!, file });
-    } catch {
-      setError('Image upload failed. Check that the file is JPEG/PNG/WebP and under 5 MB.');
+    } catch (err) {
+      setError(describeApiError(err, 'Photo upload failed. Use a JPEG, PNG or WebP under 5 MB.'));
     } finally {
       e.target.value = '';
     }
@@ -71,8 +77,8 @@ export default function EditBottlePage() {
     setError('');
     try {
       await deleteImage.mutateAsync(id!);
-    } catch {
-      setError('Failed to remove image');
+    } catch (err) {
+      setError(describeApiError(err, 'Failed to remove image'));
     }
   };
 
@@ -95,8 +101,8 @@ export default function EditBottlePage() {
         },
       });
       navigate('/inventory');
-    } catch {
-      setError('Failed to update bottle');
+    } catch (err) {
+      setError(describeApiError(err, 'Failed to update bottle'));
     }
   };
 

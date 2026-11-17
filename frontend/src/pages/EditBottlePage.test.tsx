@@ -11,6 +11,7 @@ import {
   useDeleteBottleImage,
 } from '../hooks/useBottles';
 import type { BottleResponse } from '../types/bottle';
+import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 
 vi.mock('../hooks/useBottles', () => ({
   useBottle: vi.fn(),
@@ -262,12 +263,56 @@ describe('submit', () => {
 
   it('shows an error and stays on the page when the update fails', async () => {
     mockBottleQuery(makeBottle());
-    updateMutateAsync.mockRejectedValue(new Error('boom'));
+    updateMutateAsync.mockRejectedValue(axiosError(500));
     render(ui());
 
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
     expect(await screen.findByText('Failed to update bottle')).toBeInTheDocument();
     expect(screen.queryByText('Inventory list route')).not.toBeInTheDocument();
+  });
+});
+
+function axiosError(status: number, data: unknown = {}): AxiosError {
+  const config = { headers: {} } as InternalAxiosRequestConfig;
+  const response = { status, data, headers: {}, statusText: '', config } as AxiosResponse;
+  return new AxiosError(`Request failed with status code ${status}`, 'ERR_BAD_REQUEST', config, null, response);
+}
+
+describe('error messages', () => {
+  it("shows the server's reason when a photo is refused", async () => {
+    mockBottleQuery(makeBottle());
+    const message = 'That photo is too large (20000x20000). Photos up to 50 megapixels are supported.';
+    vi.mocked(useUploadBottleImage).mockReturnValue({
+      mutateAsync: vi.fn().mockRejectedValue(axiosError(422, { message })),
+      isPending: false,
+    } as unknown as ReturnType<typeof useUploadBottleImage>);
+    const { container } = render(ui());
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'big.png', { type: 'image/png' })] } });
+    expect(await screen.findByText(message)).toBeInTheDocument();
+  });
+
+  it("shows the server's reason when a save is refused", async () => {
+    mockBottleQuery(makeBottle());
+    updateMutateAsync.mockRejectedValue(axiosError(400, { message: 'notes: must be at most 5000 characters' }));
+    render(ui());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    expect(await screen.findByText('notes: must be at most 5000 characters')).toBeInTheDocument();
+  });
+
+  it('shows a notice handed over by the Add Bottle page', () => {
+    mockBottleQuery(makeBottle());
+    const notice = "Bottle saved, but the photo was not: That file type isn't supported.";
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/inventory/b1/edit', state: { notice } }]}>
+        <Routes>
+          <Route path="/inventory/:id/edit" element={<EditBottlePage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByText(notice)).toBeInTheDocument();
   });
 });
