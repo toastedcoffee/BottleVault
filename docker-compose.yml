@@ -1,5 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # SPDX-FileCopyrightText: 2025-2026 toastedcoffee
+# Build-from-source stack. Same hardening and network model as
+# docker-compose.prod.yml (see its header for every variable); named volumes
+# instead of bind mounts, and the web UI published on ${PORT:-80}.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -17,6 +27,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    pids_limit: 256
+    logging: *logging
+    networks: [internal]
     restart: unless-stopped
 
   backend:
@@ -24,24 +41,50 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: bottlevault-api
+    user: "568:568"
     environment:
       DATABASE_URL: jdbc:postgresql://postgres:5432/bottlevault
       DATABASE_USERNAME: bottlevault
       DATABASE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-}
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
       # Only needed when the app is reached via a public https hostname;
       # plain-http LAN access is same-origin and needs no entry.
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      TURNSTILE_EXPECTED_HOSTNAME: ${TURNSTILE_EXPECTED_HOSTNAME:-}
+      IP_HASH_KEY: ${IP_HASH_KEY:-}
+      PRIVACY_URL: ${PRIVACY_URL:-}
+      EGRESS_PROXY: http://egress:3128
+      # No tunnel in this file, so nobody may vouch for a visitor's address.
+      TRUSTED_PROXY_CIDRS: ""
+      LOG_DIR: /data/logs
       # Must match the container side of the uploads volume below — change both
       # together, or photos are written to the container and lost on recreate.
       UPLOADS_DIR: /data/uploads
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=70 -XX:+ExitOnOutOfMemoryError
+    # Named volumes start out owned by 568, because the image creates these
+    # directories with that owner (backend/Dockerfile).
     volumes:
       - uploads_data:/data/uploads
+      - api_logs:/data/logs
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 512
+    logging: *logging
     depends_on:
       postgres:
         condition: service_healthy
+      egress:
+        condition: service_started
     expose:
       - "8080"
     healthcheck:
@@ -50,6 +93,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks: [internal, proxy]
     restart: unless-stopped
 
   frontend:
@@ -73,13 +117,95 @@ services:
         # against the upstream repo, which 404s.
         SOURCE_URL: ${SOURCE_URL:-https://github.com/toastedcoffee/BottleVault}
     container_name: bottlevault-web
+    user: "568:568"
     ports:
       - "${PORT:-80}:80"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    pids_limit: 128
+    logging: *logging
     depends_on:
       backend:
         condition: service_healthy
+    # `lan` exists only so the port above can be published (Docker publishes
+    # ports only on a network that is not internal).
+    networks: [internal, lan]
     restart: unless-stopped
+
+  egress:
+    image: ${EGRESS_IMAGE:-ubuntu/squid:latest}
+    container_name: bottlevault-egress
+    user: "13:13"
+    entrypoint: ["squid", "-N", "-f", "/etc/squid/squid.conf"]
+    # Not read_only: see the same service in docker-compose.prod.yml.
+    configs:
+      - source: squid_conf
+        target: /etc/squid/squid.conf
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    pids_limit: 64
+    logging: *logging
+    # Internet-name lookups go to these public resolvers, never the LAN's: the host
+    # guard allows DNS only to an explicit list (DEPLOY.md §9), and this keeps every
+    # private address off it. Compose service names still resolve inside Docker.
+    dns:
+      - ${BV_DNS_1:-1.1.1.1}
+      - ${BV_DNS_2:-9.9.9.9}
+    expose:
+      - "3128"
+    networks: [proxy, egress_out]
+    restart: unless-stopped
+
+networks:
+  internal:
+    internal: true
+    enable_ipv6: false
+  proxy:
+    internal: true
+    enable_ipv6: false
+  egress_out:
+    enable_ipv6: false
+  lan:
+    enable_ipv6: false
 
 volumes:
   postgres_data:
   uploads_data:
+  api_logs:
+
+# Keep identical to the squid_conf block in docker-compose.prod.yml.
+configs:
+  squid_conf:
+    content: |
+      http_port 3128
+      pid_filename /tmp/squid.pid
+      coredump_dir /tmp
+      cache deny all
+      cache_mem 8 MB
+      access_log stdio:/dev/stdout
+      cache_log /dev/stderr
+      logfile_rotate 0
+      shutdown_lifetime 1 second
+      forwarded_for delete
+      via off
+      # The ICMP helper needs a raw socket, i.e. a capability this container
+      # does not have; without this line it logs a FATAL at every start.
+      pinger_enable off
+
+      acl allowed_hosts dstdomain challenges.cloudflare.com api.upcitemdb.com world.openfoodfacts.org api.barcodelookup.com
+      acl https_port port 443
+      acl CONNECT method CONNECT
+      acl private_dst dst 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4 ::1 fc00::/7 fe80::/10
+
+      http_access deny !CONNECT
+      http_access deny !https_port
+      http_access deny private_dst
+      http_access allow CONNECT allowed_hosts
+      http_access deny all
