@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.multipart.MultipartFile
 import java.io.IOException
 import java.nio.file.FileSystemException
@@ -26,13 +27,19 @@ import java.util.UUID
 class BottleImageService(
     private val bottleRepository: BottleRepository,
     private val imageProcessor: ImageProcessor,
+    private val transactions: TransactionTemplate,
     @Value("\${app.uploads.dir}") private val uploadsDirRaw: String
 ) {
     private val uploadsDir: Path by lazy {
         Paths.get(uploadsDirRaw).toAbsolutePath().normalize().also { Files.createDirectories(it) }
     }
 
-    @Transactional
+    /**
+     * Deliberately not one transaction: decoding a photo (and waiting up to 10 s
+     * for a processing slot) must not pin a pooled database connection, or a
+     * burst of uploads would starve every other request. The ownership check and
+     * the final update are each their own short transaction.
+     */
     fun uploadImage(bottleId: UUID, userId: UUID, file: MultipartFile): BottleResponse {
         if (file.isEmpty) throw IllegalArgumentException("File is empty")
         if (file.size > MAX_BYTES) {
@@ -40,19 +47,19 @@ class BottleImageService(
         }
         // Ownership first: a stranger gets the same 404 whatever they upload, and
         // no image work is done on their behalf.
-        val bottle = bottleRepository.findByIdAndUserId(bottleId, userId)
-            ?: throw ResourceNotFoundException("Bottle not found")
+        bottleRepository.findByIdAndUserId(bottleId, userId) ?: throw ResourceNotFoundException("Bottle not found")
 
         // The file's own bytes decide its type; the client's Content-Type and
         // file name are ignored. What is stored is always a fresh JPEG.
         val processed = imageProcessor.process(file.bytes)
 
-        val userDir = uploadsDir.resolve("bottles").resolve(userId.toString())
-        val filename = "${UUID.randomUUID()}.jpg"
+        val relative = "bottles/$userId/${UUID.randomUUID()}.jpg"
+        val target = uploadsDir.resolve(relative)
         try {
-            Files.createDirectories(userDir)
-            Files.write(userDir.resolve(filename), processed.jpeg, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+            Files.createDirectories(target.parent)
+            Files.write(target, processed.jpeg, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
         } catch (e: IOException) {
+            runCatching { Files.deleteIfExists(target) }
             throw if (isStorageFull(e)) {
                 ApiException(HttpStatus.INSUFFICIENT_STORAGE, "Insufficient Storage", "Storage is full right now. Please try again later.")
             } else {
@@ -60,11 +67,25 @@ class BottleImageService(
             }
         }
 
-        bottle.imagePath?.let { deleteFileIfExists(it) }
-        bottle.imagePath = "bottles/$userId/$filename"
-        bottle.imageBytes = processed.jpeg.size.toLong()
-        bottle.updatedAt = Instant.now()
-        return BottleResponse.from(bottleRepository.save(bottle))
+        var replaced: String? = null
+        val response = try {
+            transactions.execute {
+                // Re-read: the bottle may have been deleted while the photo was processed.
+                val bottle = bottleRepository.findByIdAndUserId(bottleId, userId)
+                    ?: throw ResourceNotFoundException("Bottle not found")
+                replaced = bottle.imagePath
+                bottle.imagePath = relative
+                bottle.imageBytes = processed.jpeg.size.toLong()
+                bottle.updatedAt = Instant.now()
+                BottleResponse.from(bottleRepository.save(bottle))
+            }!!
+        } catch (e: Exception) {
+            runCatching { Files.deleteIfExists(target) }
+            throw e
+        }
+        // Only once the row points at the new file is the old one removed.
+        replaced?.let { deleteFileIfExists(it) }
+        return response
     }
 
     @Transactional
