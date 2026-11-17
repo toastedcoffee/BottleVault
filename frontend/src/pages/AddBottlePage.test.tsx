@@ -15,6 +15,15 @@ vi.mock('../hooks/useProducts', () => ({ useProducts: vi.fn(), useCreateProduct:
 vi.mock('../hooks/useBottles', () => ({ useCreateBottle: vi.fn(), useUploadBottleImage: vi.fn() }));
 vi.mock('../hooks/useBarcode', () => ({ useBarcodeLookup: vi.fn() }));
 
+// The real scanner needs a camera; this one "scans" a fixed barcode when clicked.
+vi.mock('../components/barcode/BarcodeScanner', () => ({
+  default: ({ onScan }: { onScan: (barcode: string) => void }) => (
+    <button type="button" onClick={() => onScan('082184000427')}>
+      Fake scan
+    </button>
+  ),
+}));
+
 const navigate = vi.fn();
 vi.mock('react-router-dom', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router-dom')>()),
@@ -136,5 +145,29 @@ describe('AddBottlePage error messages', () => {
         state: { notice: 'Bottle saved, but the photo was not: Only JPEG, PNG and WebP photos are supported.' },
       })
     );
+  });
+});
+
+describe('AddBottlePage barcode lookup errors', () => {
+  it("shows the server's sentence when today's lookup budget is spent", async () => {
+    const lookup = mutation(undefined);
+    const message =
+      "You've reached today's limit of 30 barcode lookups. Enter the details by hand, or try again tomorrow.";
+    lookup.mutate.mockImplementation((_barcode: string, options: { onError: (err: unknown) => void }) => {
+      const config = { headers: {} } as InternalAxiosRequestConfig;
+      const response = {
+        status: 429, data: { message }, headers: { 'retry-after': '82800' }, statusText: '', config,
+      } as AxiosResponse;
+      options.onError(new AxiosError('Request failed with status code 429', 'ERR_BAD_REQUEST', config, null, response));
+    });
+    vi.mocked(useBarcodeLookup).mockReturnValue(lookup as unknown as ReturnType<typeof useBarcodeLookup>);
+    render(
+      <MemoryRouter>
+        <AddBottlePage />
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^scan$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Fake scan' }));
+    expect(await screen.findByText(message)).toBeInTheDocument();
   });
 });
