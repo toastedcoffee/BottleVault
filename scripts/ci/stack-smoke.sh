@@ -192,7 +192,8 @@ photo_upload_works() {
     set -e
     api=http://frontend/api
     printf %s "$JPEG_B64" | base64 -d > /tmp/p.jpg
-    id_of() { sed -n "s/^{\"id\":\"\([^\"]*\)\".*/\1/p"; }
+    # The first "id" in the response is the created object'"'"'s own (nested objects follow it).
+    id_of() { grep -o "\"id\":\"[^\"]*\"" | head -n 1 | cut -d "\"" -f 4; }
     json="Content-Type: application/json"
     tok=$(curl -sf -X POST -H "$json" \
       -d "{\"email\":\"photo-smoke@example.com\",\"password\":\"smoke-password-1\"}" \
