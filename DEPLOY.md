@@ -369,13 +369,15 @@ migration has since run — restore the matching data snapshot too.
 |---|---|
 | DB container | `bottlevault-db` (image `${POSTGRES_IMAGE:-postgres:16-alpine}` — the default tracks the latest 16.x, so set `POSTGRES_IMAGE` to pin it) |
 | DB name / user | `bottlevault` / `bottlevault` |
-| API container | `bottlevault-api` (`ghcr.io/toastedcoffee/bottlevault-api:latest`) |
-| Web container | `bottlevault-web` (`ghcr.io/toastedcoffee/bottlevault-web:latest`) |
+| API container | `bottlevault-api` (`ghcr.io/toastedcoffee/bottlevault-api:latest`), runs as uid:gid `568:568` |
+| Web container | `bottlevault-web` (`ghcr.io/toastedcoffee/bottlevault-web:latest`), runs as uid:gid `568:568` |
 | Tunnel container | `bottlevault-tunnel` |
+| Egress proxy container | `bottlevault-egress` (Squid; the API's only outbound path, refusals logged as `TCP_DENIED` in `docker logs`) |
 | DB data (host) | `<stack>/data/postgres` |
-| Uploads (host) | `<stack>/data/uploads` |
+| Uploads (host) | `<stack>/data/uploads` (`UPLOADS_PATH`), owned by uid 568 |
 | Uploads (container) | `/data/uploads` (was `/app/uploads` before §7c) |
-| Web logs (host) | `<stack>/data/logs/nginx` |
+| Web logs (host) | `<stack>/data/logs/nginx` (`WEB_LOG_PATH`), owned by uid 568 |
+| API security log (host) | `<stack>/data/logs/api` (`API_LOG_PATH`), owned by uid 568 |
 | Migrations (repo) | `backend/src/main/resources/db/migration/V*.sql` and `backend/src/main/kotlin/db/migration/V*.kt` (Flyway JVM migrations) |
 | Stack dir (TrueNAS) | `/mnt/<pool>/configs/stacks/bottlevault` |
 
@@ -835,12 +837,11 @@ prints a WARN naming the affected networks, so cron mails it every minute.
    `docker exec <container> getent hosts example.com` must print an address.
    If it fails, see 9.6.
 
-**After the hardened-stack upgrade** (the upgrade gets its own section when it
-ships), the `tunnel` and `egress` networks set compose `dns:` from `BV_DNS_1` /
-`BV_DNS_2`. In that same window, set `BV_ALLOWED_DNS` to the same two
-addresses (for example `"1.1.1.1 9.9.9.9"`) and run `./guard.sh apply`, so no
-private destination is allowed any more. Rolling the upgrade back means
-switching the list back to the router as well.
+**After the hardened-stack upgrade** (§10), the `tunnel` and `egress` networks
+set compose `dns:` from `BV_DNS_1` / `BV_DNS_2`. In that same window, set
+`BV_ALLOWED_DNS` to the same two addresses (for example `"1.1.1.1 9.9.9.9"`)
+and run `./guard.sh apply`, so no private destination is allowed any more.
+Rolling the upgrade back means switching the list back to the router as well.
 
 ### 9.4 Verify
 
@@ -991,3 +992,110 @@ Harness switches:
   whose Docker resolves in the host's namespace takes (9.3), and the one the
   CI runner takes. Run the lab once without it and once with it, so both DNS
   paths are tested.
+
+---
+
+## 10. Hardened stack upgrade (one time)
+
+This update moves an existing stack to the hardened layout in
+[`docker-compose.prod.yml`](docker-compose.prod.yml): the API and web
+containers run as uid:gid `568:568` with read-only root filesystems and no
+capabilities, every network except two is `internal: true` (no route off the
+host), and the API's only way out is an egress proxy (`bottlevault-egress`,
+Squid) that allows HTTPS to a short list of hosts. The compose file's header
+explains each variable.
+
+> **If your stack still runs the old compose file, do not pull or "Update" it
+> until you do this upgrade.** The images published as `:latest` are now the
+> hardened ones. The old compose file cannot run them: the web image's nginx
+> runs as an unprivileged user that cannot open root-owned log files, so it
+> restart-loops. To keep the old stack updatable in the meantime, pin both
+> images in the old compose file to the last build before the change. CI tags
+> every `main` build with its full commit SHA, and that build's is
+> `68495010d230c5b454971cfca88ace94f0942c11`: replace `:latest` with
+> `:<that SHA>` on both the `bottlevault-api` and `bottlevault-web` images.
+
+Treat it like a 🛑 row in §1: back up first and do it in a planned window. It
+adds **no** database migration, but containers and networks are recreated and
+the data directories change owner, so expect a few minutes of downtime.
+
+Two things decide whether the stack comes back:
+
+- **Ownership.** Docker keeps a bind-mounted directory's owner, and the old
+  containers ran as root, so the uploads and log directories belong to root. A
+  `568` process cannot write them. Skip the `chown` below and nginx restart-loops
+  (`open() "/var/log/nginx/error.log" failed (13: Permission denied)`), the API
+  logs to the console only (it warns `Log directory /data/logs is not writable`)
+  and photo uploads fail.
+- **Networks.** `internal` and `edge` keep their names but become
+  `internal: true`. Recent Compose (2.33 was tested) stops the attached
+  containers and recreates both networks by itself. Older versions refuse
+  instead, with a message that a network "needs to be recreated"; step 7 covers
+  that.
+
+### Steps
+
+1. **Back up**: recursive snapshot and a `pg_dump` (§4).
+2. **Save the current compose text and environment** somewhere outside Dockge,
+   for rollback. If its `backend` and `frontend` images say `:latest`, change
+   them in the saved copy to the pinned pre-hardening tags in the note above:
+   after this change `:latest` is the hardened image, which the old file cannot
+   run.
+3. **Stop the stack** in Dockge. Never `down -v`.
+4. **Hand the writable directories to uid 568** (as root on the host; use your
+   real paths if you set `UPLOADS_PATH`, `WEB_LOG_PATH` or `API_LOG_PATH`):
+   ```bash
+   cd /mnt/<pool>/configs/stacks/bottlevault
+   mkdir -p data/logs/api
+   chown -R 568:568 data/uploads data/logs
+   for p in data/uploads data/logs/nginx data/logs/api; do
+     docker run --rm -u 568:568 -v "$PWD/$p":/probe alpine \
+       sh -c 'touch /probe/.w && rm /probe/.w && echo "WRITABLE $0"' "$p"
+   done
+   ```
+   All three lines must print `WRITABLE`. Leave `data/postgres` alone: the
+   database image manages its own directory.
+5. **Paste the new compose file** and add the new variables in Dockge: at least
+   `IP_HASH_KEY` (generate it like `JWT_SECRET`), plus whatever the header lists
+   that you use (`REGISTRATION_MODE`, the `TURNSTILE_*` keys, `PRIVACY_URL`, the
+   image pins). Behind a tunnel, delete the frontend's `ports:` block and `lan`
+   from its `networks:`; the comment above them says why.
+6. **If you run the host guard (§9), switch its allowed-DNS list now.** The new
+   `egress` and `tunnel` services resolve internet names through `BV_DNS_1` /
+   `BV_DNS_2` (default `1.1.1.1` and `9.9.9.9`) instead of the LAN's DNS server.
+   Set `BV_ALLOWED_DNS` in `guard.sh` to the same two addresses (for example
+   `"1.1.1.1 9.9.9.9"`) and run `./guard.sh apply` (§9.3). The stack is stopped,
+   so nothing loses DNS in between.
+7. **Deploy** in Dockge. If it fails with a message that `bottlevault_internal`
+   or `bottlevault_edge` needs to be recreated (an older Compose), remove the
+   old networks and deploy again:
+   ```bash
+   docker network rm bottlevault_internal bottlevault_edge
+   ```
+   This works with the old, stopped containers still present; the deploy
+   replaces them. If you run the host guard, run `./guard.sh apply` once the
+   stack is up, rather than waiting up to a minute for cron to pick up the new
+   networks (§9.7).
+8. **Verify**:
+   - every container is running and `bottlevault-db`, `-api` and `-web` show
+     healthy (`docker ps`);
+   - `docker exec bottlevault-api id -u` and `docker exec bottlevault-web id -u`
+     both print `568`;
+   - an existing bottle photo still loads, and a new upload appears in the
+     uploads directory;
+   - `ls -ln data/logs/api` shows `app.log` and `security.log` owned by 568;
+   - `docker port bottlevault-web` prints nothing (behind a tunnel);
+   - the app works through the tunnel;
+   - if you run the host guard: `./guard.sh check` exits 0, and the tunnel shows
+     Healthy in the Zero Trust dashboard (cloudflared resolved Cloudflare's edge
+     through the allowed resolvers);
+   - scanning a barcode that is not in your catalog reaches a provider:
+     `docker logs bottlevault-egress` shows a `TCP_TUNNEL/200` line for it. A
+     `TCP_DENIED` line means a request went somewhere off the allowlist.
+9. **Rollback**: restore the saved compose (with the pinned pre-hardening image
+   tags from step 2) and environment in Dockge; if you run the host guard, set
+   `BV_ALLOWED_DNS` back to the router and `./guard.sh apply`; deploy. If the
+   deploy refuses because a network needs to be recreated, run the
+   `docker network rm` from step 7 and deploy again. The old images run as root
+   and can still write the `568`-owned directories. Roll the snapshot back only
+   if data was written that you need to discard (§6).
