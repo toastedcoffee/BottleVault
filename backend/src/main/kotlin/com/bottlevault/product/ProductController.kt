@@ -14,6 +14,7 @@ import java.util.UUID
 @RequestMapping("/api/products")
 class ProductController(private val productService: ProductService) {
 
+    /** Bounded and ranked; needs a brandId or a term of at least 2 characters (else 400). Filters combine. */
     @GetMapping
     fun getProducts(
         @RequestParam brandId: UUID?,
@@ -21,6 +22,13 @@ class ProductController(private val productService: ProductService) {
         @RequestParam search: String?
     ): List<ProductResponse> =
         productService.getProducts(brandId, type, search)
+
+    /** "Did you mean": up to five products of one brand near [name], never the same name. */
+    @GetMapping("/suggest")
+    fun suggestProducts(@RequestParam brandId: UUID?, @RequestParam name: String?): List<ProductResponse> {
+        requireNotNull(brandId) { "brandId is required" }
+        return productService.suggestProducts(brandId, name)
+    }
 
     @GetMapping("/{id}")
     fun getProductById(@PathVariable id: UUID): ProductResponse =

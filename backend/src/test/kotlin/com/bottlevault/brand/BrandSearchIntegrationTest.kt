@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.data.domain.PageRequest
 
 @SpringBootTest
 class BrandSearchIntegrationTest : AbstractPostgresIntegrationTest() {
@@ -32,7 +33,7 @@ class BrandSearchIntegrationTest : AbstractPostgresIntegrationTest() {
     }
 
     @Test
-    fun `searchByNormalized matches an alias that appears in no name field`() {
+    fun `searchRanked matches an alias that appears in no name field`() {
         val hibiki = Brand(
             displayName = "Hibiki",
             normalizedName = NameNormalizer.normalize("Hibiki"),
@@ -41,14 +42,14 @@ class BrandSearchIntegrationTest : AbstractPostgresIntegrationTest() {
         )
         brandRepository.save(hibiki)
 
-        val results = brandRepository.searchByNormalized(NameNormalizer.normalize("suntory"))
+        val results = brandRepository.searchRanked(NameNormalizer.normalize("suntory"), PageRequest.of(0, 20))
 
         assertTrue(results.any { it.displayName == "Hibiki" })
     }
 
     @Test
-    fun `searchByNormalized still matches on the brand name itself`() {
-        val results = brandRepository.searchByNormalized(NameNormalizer.normalize("glen"))
+    fun `searchRanked still matches on the brand name itself`() {
+        val results = brandRepository.searchRanked(NameNormalizer.normalize("glen"), PageRequest.of(0, 20))
         assertTrue(results.any { it.displayName == "Glenfiddich" })
     }
 }

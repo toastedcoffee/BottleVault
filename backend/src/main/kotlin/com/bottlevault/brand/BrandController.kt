@@ -13,10 +13,15 @@ import java.util.UUID
 @RequestMapping("/api/brands")
 class BrandController(private val brandService: BrandService) {
 
+    /** A bounded, ranked search. There is no unfiltered list: a missing or one-letter term is a 400. */
     @GetMapping
-    fun getAllBrands(@RequestParam search: String?): List<BrandResponse> =
-        if (search.isNullOrBlank()) brandService.getAllBrands()
-        else brandService.searchBrands(search)
+    fun searchBrands(@RequestParam search: String?): List<BrandResponse> =
+        brandService.searchBrands(search)
+
+    /** "Did you mean": up to five brands near [name], never the same name. Under 3 characters: none. */
+    @GetMapping("/suggest")
+    fun suggestBrands(@RequestParam name: String?): List<BrandResponse> =
+        brandService.suggestBrands(name)
 
     @GetMapping("/{id}")
     fun getBrandById(@PathVariable id: UUID): BrandResponse =
