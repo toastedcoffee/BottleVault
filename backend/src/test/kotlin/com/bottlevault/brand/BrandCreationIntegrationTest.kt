@@ -52,15 +52,13 @@ class BrandCreationIntegrationTest : AbstractPostgresIntegrationTest() {
     }
 
     @Test
-    fun `searching with a term that normalizes to empty returns no results rather than every brand`() {
-        val results = brandService.searchBrands("&")
-        assertTrue(results.isEmpty())
+    fun `searching with a term that normalizes to empty is refused rather than returning every brand`() {
+        assertThrows(IllegalArgumentException::class.java) { brandService.searchBrands("&") }
     }
 
     @Test
-    fun `searching with only punctuation returns no results`() {
-        val results = brandService.searchBrands("...")
-        assertTrue(results.isEmpty())
+    fun `searching with only punctuation is refused`() {
+        assertThrows(IllegalArgumentException::class.java) { brandService.searchBrands("...") }
     }
 
     @Test

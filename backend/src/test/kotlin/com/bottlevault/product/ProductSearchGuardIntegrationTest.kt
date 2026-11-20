@@ -3,7 +3,7 @@
 package com.bottlevault.product
 
 import com.bottlevault.support.AbstractPostgresIntegrationTest
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -15,14 +15,16 @@ class ProductSearchGuardIntegrationTest : AbstractPostgresIntegrationTest() {
     private lateinit var productService: ProductService
 
     @Test
-    fun `searching with a term that normalizes to empty returns no results rather than every product`() {
-        val results = productService.getProducts(brandId = null, type = null, search = "&")
-        assertTrue(results.isEmpty())
+    fun `searching with a term that normalizes to empty is refused rather than returning every product`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            productService.getProducts(brandId = null, type = null, search = "&")
+        }
     }
 
     @Test
-    fun `searching with only punctuation returns no results`() {
-        val results = productService.getProducts(brandId = null, type = null, search = "...")
-        assertTrue(results.isEmpty())
+    fun `searching with only punctuation is refused`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            productService.getProducts(brandId = null, type = null, search = "...")
+        }
     }
 }

@@ -1,17 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import AddBottlePage from './AddBottlePage';
-import { useBrands, useCreateBrand } from '../hooks/useBrands';
-import { useProducts, useCreateProduct } from '../hooks/useProducts';
+import { useCreateBrand } from '../hooks/useBrands';
+import { useCreateProduct } from '../hooks/useProducts';
 import { useCreateBottle, useUploadBottleImage } from '../hooks/useBottles';
 import { useBarcodeLookup } from '../hooks/useBarcode';
+import { brandsApi } from '../api/brands.api';
+import { productsApi } from '../api/products.api';
+import { renderWithQueries, brand, product } from '../test/catalogFixtures';
 import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 
-vi.mock('../hooks/useBrands', () => ({ useBrands: vi.fn(), useCreateBrand: vi.fn() }));
-vi.mock('../hooks/useProducts', () => ({ useProducts: vi.fn(), useCreateProduct: vi.fn() }));
+// The pickers' searches run for real over mocked API calls; only the writes are mocked hooks.
+vi.mock('../hooks/useBrands', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useBrands')>()),
+  useCreateBrand: vi.fn(),
+}));
+vi.mock('../hooks/useProducts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useProducts')>()),
+  useCreateProduct: vi.fn(),
+}));
+vi.mock('../api/brands.api', () => ({
+  brandsApi: { search: vi.fn(), suggest: vi.fn(), getById: vi.fn(), create: vi.fn() },
+}));
+vi.mock('../api/products.api', () => ({
+  productsApi: { list: vi.fn(), suggest: vi.fn(), getById: vi.fn(), create: vi.fn() },
+}));
 vi.mock('../hooks/useBottles', () => ({ useCreateBottle: vi.fn(), useUploadBottleImage: vi.fn() }));
 vi.mock('../hooks/useBarcode', () => ({ useBarcodeLookup: vi.fn() }));
 
@@ -43,8 +59,10 @@ beforeEach(() => {
   createBrand = mutation({ id: 'br-new' });
   createProduct = mutation({ id: 'p-new' });
   createBottle = mutation({ id: 'b-new' });
-  vi.mocked(useBrands).mockReturnValue({ data: [] } as unknown as ReturnType<typeof useBrands>);
-  vi.mocked(useProducts).mockReturnValue({ data: [] } as unknown as ReturnType<typeof useProducts>);
+  vi.mocked(brandsApi.search).mockResolvedValue([]);
+  vi.mocked(brandsApi.suggest).mockResolvedValue([]);
+  vi.mocked(productsApi.list).mockResolvedValue([]);
+  vi.mocked(productsApi.suggest).mockResolvedValue([]);
   vi.mocked(useCreateBrand).mockReturnValue(createBrand as unknown as ReturnType<typeof useCreateBrand>);
   vi.mocked(useCreateProduct).mockReturnValue(createProduct as unknown as ReturnType<typeof useCreateProduct>);
   vi.mocked(useCreateBottle).mockReturnValue(createBottle as unknown as ReturnType<typeof useCreateBottle>);
@@ -56,23 +74,30 @@ beforeEach(() => {
   );
 });
 
-/** Opens "new product" with "new brand", fills the brand, and returns the form. */
-function startNewProductWithNewBrand() {
-  render(
+function renderPage() {
+  renderWithQueries(
     <MemoryRouter>
       <AddBottlePage />
     </MemoryRouter>
   );
-  fireEvent.click(screen.getByRole('button', { name: /add new product/i }));
-  fireEvent.click(screen.getByRole('button', { name: /add new brand/i }));
-  fireEvent.change(screen.getByPlaceholderText('Brand name'), { target: { value: 'Acme Distilling' } });
+}
+
+/**
+ * Searches the brand picker for a name the catalog lacks and chooses "Create new",
+ * which (with nothing near it) opens the new-product form with that new brand.
+ */
+async function startNewProductWithNewBrand() {
+  renderPage();
+  fireEvent.change(screen.getByLabelText('Brand'), { target: { value: 'Acme Distilling' } });
+  fireEvent.click(await screen.findByRole('button', { name: 'Create new brand "Acme Distilling"' }));
+  expect(await screen.findByPlaceholderText('Brand name')).toHaveValue('Acme Distilling');
 }
 
 const submit = () => fireEvent.click(screen.getByRole('button', { name: /add to collection/i }));
 
 describe('AddBottlePage validation order', () => {
   it('does not create a brand when the product name is missing', async () => {
-    startNewProductWithNewBrand();
+    await startNewProductWithNewBrand();
     submit();
     expect(await screen.findByText('Product name is required')).toBeInTheDocument();
     // The catalog is shared: a brand created before a rejected product is an orphan.
@@ -81,7 +106,7 @@ describe('AddBottlePage validation order', () => {
   });
 
   it('does not create a brand when the barcode is not a product barcode', async () => {
-    startNewProductWithNewBrand();
+    await startNewProductWithNewBrand();
     fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: 'Small Batch' } });
     fireEvent.change(screen.getByLabelText('Barcode'), { target: { value: 'https://example.com' } });
     submit();
@@ -93,7 +118,7 @@ describe('AddBottlePage validation order', () => {
   });
 
   it('saves a barcode copied with spaces and dashes as plain digits', async () => {
-    startNewProductWithNewBrand();
+    await startNewProductWithNewBrand();
     fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: 'Small Batch' } });
     fireEvent.change(screen.getByLabelText('Barcode'), { target: { value: '0 82184-00042 7' } });
     submit();
@@ -106,7 +131,7 @@ describe('AddBottlePage validation order', () => {
   });
 
   it('leaves the barcode out when the field is empty', async () => {
-    startNewProductWithNewBrand();
+    await startNewProductWithNewBrand();
     fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: 'Small Batch' } });
     submit();
     await waitFor(() => expect(createProduct.mutateAsync).toHaveBeenCalled());
@@ -122,7 +147,7 @@ function axiosError(status: number, data: unknown = {}): AxiosError {
 
 describe('AddBottlePage error messages', () => {
   it("shows the server's reason when the bottle is refused", async () => {
-    startNewProductWithNewBrand();
+    await startNewProductWithNewBrand();
     fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: 'Small Batch' } });
     createBottle.mutateAsync.mockRejectedValue(axiosError(400, { message: 'notes: must be at most 5000 characters' }));
     submit();
@@ -134,7 +159,7 @@ describe('AddBottlePage error messages', () => {
     const upload = mutation(undefined);
     upload.mutateAsync.mockRejectedValue(axiosError(415, { message: 'Only JPEG, PNG and WebP photos are supported.' }));
     vi.mocked(useUploadBottleImage).mockReturnValue(upload as unknown as ReturnType<typeof useUploadBottleImage>);
-    startNewProductWithNewBrand();
+    await startNewProductWithNewBrand();
     fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: 'Small Batch' } });
     fireEvent.change(screen.getByLabelText('Photo'), {
       target: { files: [new File(['x'], 'label.gif', { type: 'image/gif' })] },
@@ -161,13 +186,126 @@ describe('AddBottlePage barcode lookup errors', () => {
       options.onError(new AxiosError('Request failed with status code 429', 'ERR_BAD_REQUEST', config, null, response));
     });
     vi.mocked(useBarcodeLookup).mockReturnValue(lookup as unknown as ReturnType<typeof useBarcodeLookup>);
-    render(
-      <MemoryRouter>
-        <AddBottlePage />
-      </MemoryRouter>
-    );
+    renderPage();
     fireEvent.click(screen.getByRole('button', { name: /^scan$/i }));
     fireEvent.click(await screen.findByRole('button', { name: 'Fake scan' }));
     expect(await screen.findByText(message)).toBeInTheDocument();
+  });
+});
+
+describe('AddBottlePage catalog pickers', () => {
+  const acme = brand('br-1', 'Acme Distilling');
+  const smallBatch = product('p-1', 'Small Batch', acme);
+
+  it('searches brands as you type and picks a product from the chosen brand', async () => {
+    vi.mocked(brandsApi.search).mockResolvedValue([acme]);
+    vi.mocked(productsApi.list).mockResolvedValue([smallBatch]);
+    renderPage();
+    fireEvent.change(screen.getByLabelText('Brand'), { target: { value: 'acme' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Acme Distilling' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Small Batch' }));
+    submit();
+    await waitFor(() => expect(createBottle.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ productId: 'p-1' })));
+    expect(createBrand.mutateAsync).not.toHaveBeenCalled();
+    expect(createProduct.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('create new -> did you mean -> picking the suggestion uses the existing brand', async () => {
+    vi.mocked(brandsApi.suggest).mockResolvedValue([acme]);
+    vi.mocked(productsApi.list).mockResolvedValue([smallBatch]);
+    renderPage();
+    fireEvent.change(screen.getByLabelText('Brand'), { target: { value: 'Acme Distiling' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Create new brand "Acme Distiling"' }));
+    expect(await screen.findByText('Did you mean...?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Acme Distilling' }));
+    expect(await screen.findByRole('button', { name: 'Small Batch' })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Brand name')).not.toBeInTheDocument();
+  });
+
+  it("create new -> did you mean -> No, create opens the new brand with the typed name", async () => {
+    vi.mocked(brandsApi.suggest).mockResolvedValue([acme]);
+    renderPage();
+    fireEvent.change(screen.getByLabelText('Brand'), { target: { value: 'Acme Distiling' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Create new brand "Acme Distiling"' }));
+    fireEvent.click(await screen.findByRole('button', { name: "No, create 'Acme Distiling'" }));
+    expect(await screen.findByPlaceholderText('Brand name')).toHaveValue('Acme Distiling');
+  });
+
+  it('cancelling the new product drops the scan prompt with it', async () => {
+    const lookup = mutation(undefined);
+    lookup.mutate.mockImplementation((_barcode: string, options: { onSuccess: (r: unknown) => void }) => {
+      options.onSuccess({
+        found: true, source: 'provider', product: null,
+        externalProduct: {
+          name: 'Smal Batch', brandName: 'Acme Distiling', barcode: '082184000427',
+          size: null, abv: null, imageUrl: null, categories: null,
+        },
+      });
+    });
+    vi.mocked(useBarcodeLookup).mockReturnValue(lookup as unknown as ReturnType<typeof useBarcodeLookup>);
+    vi.mocked(brandsApi.suggest).mockResolvedValue([acme]);
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /^scan$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Fake scan' }));
+    expect(await screen.findByText('The scan names the brand "Acme Distiling".')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel - select existing product/i }));
+    vi.mocked(brandsApi.suggest).mockResolvedValue([]);
+    fireEvent.change(screen.getByLabelText('Brand'), { target: { value: 'Other Brand' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Create new brand "Other Brand"' }));
+    expect(await screen.findByPlaceholderText('Brand name')).toHaveValue('Other Brand');
+    expect(screen.queryByText('The scan names the brand "Acme Distiling".')).not.toBeInTheDocument();
+  });
+
+  it('a new product after an abandoned new brand goes under the brand picked since', async () => {
+    vi.mocked(brandsApi.search).mockResolvedValue([acme]);
+    await startNewProductWithNewBrand();
+    fireEvent.click(screen.getByRole('button', { name: /cancel - select existing product/i }));
+    fireEvent.change(screen.getByLabelText('Brand'), { target: { value: 'acme' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Acme Distilling' }));
+    fireEvent.change(await screen.findByLabelText('Product'), { target: { value: 'Rare Cask' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Create new product "Rare Cask"' }));
+    expect(await screen.findByLabelText('Product Name')).toHaveValue('Rare Cask');
+    expect(screen.queryByPlaceholderText('Brand name')).not.toBeInTheDocument();
+    submit();
+    await waitFor(() => expect(createProduct.mutateAsync).toHaveBeenCalled());
+    expect(createBrand.mutateAsync).not.toHaveBeenCalled();
+    expect(createProduct.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ name: 'Rare Cask', brandId: 'br-1' }));
+  });
+
+  it('a scan that pre-fills brand and product names asks "did you mean" for both, then joins the existing product', async () => {
+    const lookup = mutation(undefined);
+    lookup.mutate.mockImplementation((_barcode: string, options: { onSuccess: (r: unknown) => void }) => {
+      options.onSuccess({
+        found: true, source: 'provider', product: null,
+        externalProduct: {
+          name: 'Smal Batch', brandName: 'Acme Distiling', barcode: '082184000427',
+          size: null, abv: null, imageUrl: null, categories: null,
+        },
+      });
+    });
+    vi.mocked(useBarcodeLookup).mockReturnValue(lookup as unknown as ReturnType<typeof useBarcodeLookup>);
+    vi.mocked(brandsApi.suggest).mockResolvedValue([acme]);
+    vi.mocked(brandsApi.getById).mockResolvedValue(acme);
+    vi.mocked(productsApi.suggest).mockResolvedValue([smallBatch]);
+    createProduct.mutateAsync.mockResolvedValue({ id: 'p-1' });
+
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /^scan$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Fake scan' }));
+
+    expect(await screen.findByText(`The scan names the brand "Acme Distiling".`)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Acme Distilling' }));
+    expect(await screen.findByText(`The scan names the product "Smal Batch".`)).toBeInTheDocument();
+    expect(productsApi.suggest).toHaveBeenCalledWith('br-1', 'Smal Batch');
+    fireEvent.click(screen.getByRole('button', { name: 'Small Batch' }));
+    expect(screen.getByLabelText('Product Name')).toHaveValue('Small Batch');
+
+    submit();
+    await waitFor(() => expect(createProduct.mutateAsync).toHaveBeenCalled());
+    expect(createBrand.mutateAsync).not.toHaveBeenCalled();
+    expect(createProduct.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Small Batch', brandId: 'br-1', barcode: '082184000427' })
+    );
   });
 });
