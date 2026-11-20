@@ -60,6 +60,17 @@ describe('ScanMatchPrompt', () => {
     expect(productsApi.suggest).not.toHaveBeenCalled();
   });
 
+  it('moves on to products once a brand is chosen some other way', async () => {
+    vi.mocked(brandsApi.suggest).mockResolvedValue([buffalo]);
+    vi.mocked(productsApi.suggest).mockResolvedValue([bourbon]);
+    const props = { brandName: 'Bufalo Trace', productName: 'Kentucky Straight Burbon', onUseBrand: vi.fn(), onUseProduct: vi.fn() };
+    const view = renderWithQueries(<ScanMatchPrompt {...props} brandId={null} />);
+    expect(await screen.findByText('The scan names the brand "Bufalo Trace".')).toBeInTheDocument();
+    view.rerender(<ScanMatchPrompt {...props} brandId="br-1" />);
+    expect(await screen.findByText('The scan names the product "Kentucky Straight Burbon".')).toBeInTheDocument();
+    expect(screen.queryByText('The scan names the brand "Bufalo Trace".')).not.toBeInTheDocument();
+  });
+
   it('shows nothing when the catalog has nothing near', async () => {
     renderWithQueries(
       <ScanMatchPrompt brandName="Unheard Of" productName="Thing" brandId={null} onUseBrand={vi.fn()} onUseProduct={vi.fn()} />

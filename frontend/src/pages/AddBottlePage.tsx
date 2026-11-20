@@ -288,7 +288,8 @@ export default function AddBottlePage() {
                   brandId={selectedBrandId}
                   value={selectedProductId}
                   onChange={(p) => setSelectedProductId(p?.id ?? '')}
-                  onCreateNew={(name) => { setIsCreatingProduct(true); setNewProductName(name); }}
+                  // The brand is the one picked above, not a new brand left over from earlier.
+                  onCreateNew={(name) => { setIsCreatingProduct(true); setIsCreatingBrand(false); setNewProductName(name); }}
                 />
               )}
             </div>

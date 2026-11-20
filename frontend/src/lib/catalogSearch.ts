@@ -7,5 +7,6 @@
  * that would be refused anyway; the server's normalizer decides what matches.
  */
 export function isSearchable(term: string): boolean {
-  return (term.match(/[\p{L}\p{N}]/gu)?.length ?? 0) >= 2;
+  // Decimal digits only (\p{Nd}): the server drops "²" and other non-decimal numerals.
+  return (term.match(/[\p{L}\p{Nd}]/gu)?.length ?? 0) >= 2;
 }

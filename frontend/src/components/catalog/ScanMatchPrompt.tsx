@@ -33,11 +33,12 @@ export default function ScanMatchPrompt({ brandName, productName, brandId, onUse
   const [brandDone, setBrandDone] = useState(!brandName || brandId !== null);
   const [productDone, setProductDone] = useState(false);
 
-  const brandOpen = !brandDone && brandName !== null;
+  // Once the form is on an existing brand, however it got there, the brand question is settled.
+  const brandOpen = !brandDone && brandName !== null && brandId === null;
   const brandHits = useBrandSearch(brandOpen ? brandName : '');
   const brandNear = useBrandSuggestions(brandOpen ? brandName : null);
 
-  const productOpen = brandDone && !productDone && brandId !== null && productName.trim() !== '';
+  const productOpen = !brandOpen && !productDone && brandId !== null && productName.trim() !== '';
   const productNear = useProductSuggestions(productOpen ? brandId : null, productOpen ? productName : null);
 
   if (brandOpen) {

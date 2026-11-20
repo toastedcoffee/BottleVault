@@ -231,6 +231,22 @@ describe('AddBottlePage catalog pickers', () => {
     expect(await screen.findByPlaceholderText('Brand name')).toHaveValue('Acme Distiling');
   });
 
+  it('a new product after an abandoned new brand goes under the brand picked since', async () => {
+    vi.mocked(brandsApi.search).mockResolvedValue([acme]);
+    await startNewProductWithNewBrand();
+    fireEvent.click(screen.getByRole('button', { name: /cancel - select existing product/i }));
+    fireEvent.change(screen.getByLabelText('Brand'), { target: { value: 'acme' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Acme Distilling' }));
+    fireEvent.change(await screen.findByLabelText('Product'), { target: { value: 'Rare Cask' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Create new product "Rare Cask"' }));
+    expect(await screen.findByLabelText('Product Name')).toHaveValue('Rare Cask');
+    expect(screen.queryByPlaceholderText('Brand name')).not.toBeInTheDocument();
+    submit();
+    await waitFor(() => expect(createProduct.mutateAsync).toHaveBeenCalled());
+    expect(createBrand.mutateAsync).not.toHaveBeenCalled();
+    expect(createProduct.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ name: 'Rare Cask', brandId: 'br-1' }));
+  });
+
   it('a scan that pre-fills brand and product names asks "did you mean" for both, then joins the existing product', async () => {
     const lookup = mutation(undefined);
     lookup.mutate.mockImplementation((_barcode: string, options: { onSuccess: (r: unknown) => void }) => {
