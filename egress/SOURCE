@@ -1,0 +1,24 @@
+SPDX-License-Identifier: AGPL-3.0-only
+SPDX-FileCopyrightText: 2025-2026 toastedcoffee
+
+Source code for this image
+==========================
+
+This image contains Squid (GPL-2.0-or-later) and other Alpine Linux packages,
+several of them under the GPL or LGPL (busybox, for one, is GPL-2.0-only).
+
+The complete corresponding source of every package in this image - Alpine's
+build recipe and patches for each, the upstream source archives, and their
+licence texts - is published beside it in the same registry, under the same tag
+with "-source" appended:
+
+    ghcr.io/toastedcoffee/bottlevault-egress:<tag>-source
+
+For example, the source of ...:<commit-sha> is ...:<commit-sha>-source. Its
+PACKAGES.tsv lists each package, version, licence and Alpine aports commit.
+Pull it with "docker pull" and copy the files out with "docker create" and
+"docker cp" (it is a data-only image, not something to run).
+
+The image's own files (the entrypoint, the SNI helper and the healthcheck
+in /usr/local/bin) are BottleVault's, licensed AGPL-3.0-only; see LICENSE and
+COPYRIGHT in this directory and https://github.com/toastedcoffee/BottleVault.

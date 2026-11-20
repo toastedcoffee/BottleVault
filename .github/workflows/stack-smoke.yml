@@ -31,5 +31,6 @@ jobs:
         run: |
           docker build -f backend/Dockerfile -t ghcr.io/toastedcoffee/bottlevault-api:latest .
           docker build -f frontend/Dockerfile -t ghcr.io/toastedcoffee/bottlevault-web:latest .
+          docker build -f egress/Dockerfile -t ghcr.io/toastedcoffee/bottlevault-egress:latest .
       - name: Run the smoke test
         run: bash scripts/ci/stack-smoke.sh
