@@ -15,9 +15,14 @@ with "-source" appended:
     ghcr.io/toastedcoffee/bottlevault-egress:<tag>-source
 
 For example, the source of ...:<commit-sha> is ...:<commit-sha>-source. Its
-PACKAGES.tsv lists each package, version, licence and Alpine aports commit.
-Pull it with "docker pull" and copy the files out with "docker create" and
-"docker cp" (it is a data-only image, not something to run).
+PACKAGES.tsv lists each package, version, licence and Alpine aports commit;
+aports/ holds each package's build recipe and distfiles/ the source archives.
+It is a data-only image, not something to run. To copy it out:
+
+    docker pull ghcr.io/toastedcoffee/bottlevault-egress:<tag>-source
+    id=$(docker create ghcr.io/toastedcoffee/bottlevault-egress:<tag>-source none)
+    docker cp "$id":/source ./bottlevault-egress-source
+    docker rm "$id"
 
 The image's own files (the entrypoint, the SNI helper and the healthcheck
 in /usr/local/bin) are BottleVault's, licensed AGPL-3.0-only; see LICENSE and

@@ -128,6 +128,41 @@ jobs:
             .
           docker push "ghcr.io/toastedcoffee/bottlevault-web:$TAG"
           docker push "ghcr.io/toastedcoffee/bottlevault-web:$SHA"
+      # The egress image is Alpine's Squid (GPL-2.0-or-later) and other GPL/LGPL
+      # packages, so publishing it means publishing their complete corresponding
+      # source from the same place: the same registry and tags, plus "-source".
+      # The source is collected and pushed first; if that fails, the image itself
+      # is never pushed.
+      - name: Build the egress image and collect its source
+        env:
+          SHA: ${{ github.sha }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          IMG=ghcr.io/toastedcoffee/bottlevault-egress
+          docker build -f egress/Dockerfile -t "$IMG:$TAG" -t "$IMG:$SHA" .
+          mkdir -p egress-source
+          docker run --rm --entrypoint cat "$IMG:$SHA" /lib/apk/db/installed > egress-source/installed
+          # The same pinned base image the egress image is built on.
+          BASE=$(sed -n 's/^FROM //p' egress/Dockerfile)
+          docker run --rm -v "$PWD/egress:/egress:ro" -v "$PWD/egress-source:/w" "$BASE" \
+            sh /egress/source-bundle.sh /w/installed /w/bundle
+          docker build -f - \
+            --label "org.opencontainers.image.source=$REPO_URL" \
+            --label "org.opencontainers.image.title=BottleVault egress proxy: source" \
+            --label "org.opencontainers.image.description=Complete corresponding source of every package in the bottlevault-egress image with the same tag, without its -source suffix" \
+            -t "$IMG:$TAG-source" -t "$IMG:$SHA-source" egress-source/bundle <<'EOF'
+          FROM scratch
+          COPY . /source/
+          EOF
+      - name: Push the egress source, then the egress image
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          IMG=ghcr.io/toastedcoffee/bottlevault-egress
+          docker push "$IMG:$TAG-source"
+          docker push "$IMG:$SHA-source"
+          docker push "$IMG:$TAG"
+          docker push "$IMG:$SHA"
       # Report-only for now (exit-code 0): a base-image CVE with no fix must not
       # block a deploy. Findings land in the repository's Security tab. The images
       # are already pushed by this point, so a scanner outage (e.g. the vulnerability
@@ -153,6 +188,16 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '0'
+      - name: Scan the egress image
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/toastedcoffee/bottlevault-egress:${{ github.sha }}
+          format: sarif
+          output: trivy-egress.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
       - name: Upload the API scan
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
@@ -165,3 +210,9 @@ jobs:
         with:
           sarif_file: trivy-web.sarif
           category: trivy-web
+      - name: Upload the egress scan
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: trivy-egress.sarif
+          category: trivy-egress
