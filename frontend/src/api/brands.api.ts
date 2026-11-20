@@ -4,8 +4,13 @@ import apiClient from './client';
 import type { BrandResponse, BrandCreateRequest } from '../types/brand';
 
 export const brandsApi = {
-  list: (search?: string) =>
-    apiClient.get<BrandResponse[]>('/brands', { params: search ? { search } : {} }).then((r) => r.data),
+  /** At most 20 brands, exact match first. The server needs a term of 2+ letters or digits. */
+  search: (search: string) =>
+    apiClient.get<BrandResponse[]>('/brands', { params: { search } }).then((r) => r.data),
+
+  /** "Did you mean": up to five brands near `name`, never the same name. */
+  suggest: (name: string) =>
+    apiClient.get<BrandResponse[]>('/brands/suggest', { params: { name } }).then((r) => r.data),
 
   getById: (id: string) =>
     apiClient.get<BrandResponse>(`/brands/${id}`).then((r) => r.data),

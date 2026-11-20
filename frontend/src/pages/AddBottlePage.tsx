@@ -2,15 +2,18 @@
 // SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 import { lazy, Suspense, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useBrands, useCreateBrand } from '../hooks/useBrands';
-import { useProducts, useCreateProduct } from '../hooks/useProducts';
+import { useCreateBrand } from '../hooks/useBrands';
+import { useCreateProduct } from '../hooks/useProducts';
+import BrandPicker from '../components/catalog/BrandPicker';
+import ProductPicker from '../components/catalog/ProductPicker';
+import ScanMatchPrompt from '../components/catalog/ScanMatchPrompt';
 import { useCreateBottle, useUploadBottleImage } from '../hooks/useBottles';
 import { useBarcodeLookup } from '../hooks/useBarcode';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import InlineError from '../components/common/InlineError';
 import type { BottleStatus } from '../types/bottle';
 import type { AlcoholType } from '../types/product';
-import { Camera, ArrowLeft, Plus } from 'lucide-react';
+import { Camera, ArrowLeft } from 'lucide-react';
 import { normalizeBarcodeInput, BARCODE_INPUT_ERROR } from '../lib/barcode';
 import axios from 'axios';
 import { describeApiError } from '../api/client';
@@ -77,9 +80,9 @@ export default function AddBottlePage() {
 
   const [error, setError] = useState('');
 
-  // Queries
-  const { data: brands } = useBrands();
-  const { data: products } = useProducts(selectedBrandId ? { brandId: selectedBrandId } : {});
+  // Names a barcode provider filled in, offered to "did you mean" against the catalog.
+  const [scanPrefill, setScanPrefill] = useState<{ brandName: string | null; productName: string } | null>(null);
+
   const createBrand = useCreateBrand();
   const createProduct = useCreateProduct();
   const createBottle = useCreateBottle();
@@ -90,6 +93,7 @@ export default function AddBottlePage() {
     setShowScanner(false);
     setScanResult(barcode);
     setNewProductBarcode(barcode);
+    setScanPrefill(null);
 
     barcodeLookup.mutate(barcode, {
       onSuccess: (result) => {
@@ -112,6 +116,10 @@ export default function AddBottlePage() {
           if (result.externalProduct.size) {
             setNewProductSize(result.externalProduct.size);
           }
+          setScanPrefill({
+            brandName: result.externalProduct.brandName || null,
+            productName: result.externalProduct.name,
+          });
         } else {
           // Not found anywhere - open create product form
           setIsCreatingProduct(true);
@@ -268,72 +276,44 @@ export default function AddBottlePage() {
 
           {!isCreatingProduct ? (
             <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-text-mid mb-1">Brand</label>
-                <select
-                  value={selectedBrandId}
-                  onChange={(e) => { setSelectedBrandId(e.target.value); setSelectedProductId(''); }}
-                  className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
-                >
-                  <option value="">Select a brand...</option>
-                  {brands?.map((b) => (
-                    <option key={b.id} value={b.id}>{b.displayName}</option>
-                  ))}
-                </select>
-              </div>
+              <BrandPicker
+                value={selectedBrandId}
+                onChange={(b) => { setSelectedBrandId(b?.id ?? ''); setSelectedProductId(''); }}
+                onCreateNew={(name) => { setIsCreatingProduct(true); setIsCreatingBrand(true); setNewBrandName(name); }}
+              />
 
               {selectedBrandId && (
-                <div>
-                  <label className="block text-sm font-medium text-text-mid mb-1">Product</label>
-                  <select
-                    value={selectedProductId}
-                    onChange={(e) => setSelectedProductId(e.target.value)}
-                    className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
-                  >
-                    <option value="">Select a product...</option>
-                    {products?.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.displayName} {p.size ? `(${p.size})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <ProductPicker
+                  key={selectedBrandId}
+                  brandId={selectedBrandId}
+                  value={selectedProductId}
+                  onChange={(p) => setSelectedProductId(p?.id ?? '')}
+                  onCreateNew={(name) => { setIsCreatingProduct(true); setNewProductName(name); }}
+                />
               )}
-
-              <button
-                type="button"
-                onClick={() => setIsCreatingProduct(true)}
-                className="flex items-center gap-1 text-sm text-primary-bright hover:text-primary"
-              >
-                <Plus className="w-3 h-3" />
-                Add new product
-              </button>
             </div>
           ) : (
             <div className="space-y-3">
+              {scanPrefill && (
+                <ScanMatchPrompt
+                  key={scanResult ?? ''}
+                  brandName={scanPrefill.brandName}
+                  productName={scanPrefill.productName}
+                  brandId={!isCreatingBrand && selectedBrandId ? selectedBrandId : null}
+                  onUseBrand={(b) => { setIsCreatingBrand(false); setNewBrandName(''); setSelectedBrandId(b.id); }}
+                  // The name, not the id: the server's find-or-create then joins the
+                  // existing product and keeps the scanned barcode with it.
+                  onUseProduct={(p) => setNewProductName(p.displayName)}
+                />
+              )}
+
               {/* Brand selection or creation */}
               {!isCreatingBrand ? (
-                <div>
-                  <label className="block text-sm font-medium text-text-mid mb-1">Brand</label>
-                  <select
-                    value={selectedBrandId}
-                    onChange={(e) => setSelectedBrandId(e.target.value)}
-                    className="w-full px-3 py-2 bg-surface border border-border rounded-md text-sm text-text-hi placeholder:text-text-low focus:outline-none focus:ring-2 focus:ring-primary-bright focus:border-primary-bright"
-                  >
-                    <option value="">Select a brand...</option>
-                    {brands?.map((b) => (
-                      <option key={b.id} value={b.id}>{b.displayName}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setIsCreatingBrand(true)}
-                    className="flex items-center gap-1 mt-1 text-sm text-primary-bright hover:text-primary"
-                  >
-                    <Plus className="w-3 h-3" />
-                    Add new brand
-                  </button>
-                </div>
+                <BrandPicker
+                  value={selectedBrandId}
+                  onChange={(b) => setSelectedBrandId(b?.id ?? '')}
+                  onCreateNew={(name) => { setIsCreatingBrand(true); setNewBrandName(name); }}
+                />
               ) : (
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-text-mid">New Brand</label>

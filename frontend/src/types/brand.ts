@@ -10,5 +10,4 @@ export interface BrandResponse {
 export interface BrandCreateRequest {
   name: string;
   country?: string;
-  website?: string;
 }

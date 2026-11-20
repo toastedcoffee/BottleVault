@@ -31,6 +31,4 @@ export interface ProductCreateRequest {
   subtype?: string;
   size?: string;
   abv?: number;
-  description?: string;
-  imageUrl?: string;
 }

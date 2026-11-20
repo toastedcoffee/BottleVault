@@ -56,16 +56,19 @@ class BottleVaultIntegrationTest : AbstractPostgresIntegrationTest() {
 
     @Test
     fun `brands are seeded on startup`() {
-        val result = mockMvc.perform(get("/api/brands").header("Authorization", "Bearer $accessToken"))
-            .andExpect(status().isOk)
-            .andReturn()
+        // The brand list is search-only (spec H5), so check seeded names one by one.
+        for (name in listOf("Jameson", "Glenfiddich", "Buffalo Trace", "Woodford Reserve", "Hennessy")) {
+            val result = mockMvc.perform(get("/api/brands").param("search", name).header("Authorization", "Bearer $accessToken"))
+                .andExpect(status().isOk)
+                .andReturn()
 
-        val brands = objectMapper.readValue(
-            result.response.contentAsString,
-            objectMapper.typeFactory.constructCollectionType(List::class.java, BrandResponse::class.java)
-        ) as List<*>
+            val brands = objectMapper.readValue(
+                result.response.contentAsString,
+                objectMapper.typeFactory.constructCollectionType(List::class.java, BrandResponse::class.java)
+            ) as List<*>
 
-        assertTrue(brands.size >= 20, "Should have at least 20 seeded brands")
+            assertTrue(brands.any { (it as BrandResponse).displayName == name }, "$name should be seeded")
+        }
     }
 
     @Test
