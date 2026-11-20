@@ -414,7 +414,7 @@ export default function AddBottlePage() {
 
               <button
                 type="button"
-                onClick={() => { setIsCreatingProduct(false); setNewProductName(''); }}
+                onClick={() => { setIsCreatingProduct(false); setNewProductName(''); setScanPrefill(null); }}
                 className="text-sm text-text-mid hover:text-text-hi"
               >
                 Cancel - select existing product

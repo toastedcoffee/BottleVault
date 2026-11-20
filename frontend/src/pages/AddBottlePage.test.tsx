@@ -231,6 +231,32 @@ describe('AddBottlePage catalog pickers', () => {
     expect(await screen.findByPlaceholderText('Brand name')).toHaveValue('Acme Distiling');
   });
 
+  it('cancelling the new product drops the scan prompt with it', async () => {
+    const lookup = mutation(undefined);
+    lookup.mutate.mockImplementation((_barcode: string, options: { onSuccess: (r: unknown) => void }) => {
+      options.onSuccess({
+        found: true, source: 'provider', product: null,
+        externalProduct: {
+          name: 'Smal Batch', brandName: 'Acme Distiling', barcode: '082184000427',
+          size: null, abv: null, imageUrl: null, categories: null,
+        },
+      });
+    });
+    vi.mocked(useBarcodeLookup).mockReturnValue(lookup as unknown as ReturnType<typeof useBarcodeLookup>);
+    vi.mocked(brandsApi.suggest).mockResolvedValue([acme]);
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /^scan$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Fake scan' }));
+    expect(await screen.findByText('The scan names the brand "Acme Distiling".')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel - select existing product/i }));
+    vi.mocked(brandsApi.suggest).mockResolvedValue([]);
+    fireEvent.change(screen.getByLabelText('Brand'), { target: { value: 'Other Brand' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Create new brand "Other Brand"' }));
+    expect(await screen.findByPlaceholderText('Brand name')).toHaveValue('Other Brand');
+    expect(screen.queryByText('The scan names the brand "Acme Distiling".')).not.toBeInTheDocument();
+  });
+
   it('a new product after an abandoned new brand goes under the brand picked since', async () => {
     vi.mocked(brandsApi.search).mockResolvedValue([acme]);
     await startNewProductWithNewBrand();
