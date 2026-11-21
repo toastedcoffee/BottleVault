@@ -31,5 +31,21 @@ jobs:
         run: |
           docker build -f backend/Dockerfile -t ghcr.io/toastedcoffee/bottlevault-api:latest .
           docker build -f frontend/Dockerfile -t ghcr.io/toastedcoffee/bottlevault-web:latest .
+          docker build -f egress/Dockerfile -t ghcr.io/toastedcoffee/bottlevault-egress:latest .
       - name: Run the smoke test
         run: bash scripts/ci/stack-smoke.sh
+      # ci.yml publishes the egress image only after collecting its source, and
+      # only on main. Collect it here too (without pushing), so a PR that breaks
+      # the collection fails before merge instead of blocking the next publish.
+      - name: Collect the egress image's source, as the publish job does
+        run: |
+          mkdir -p egress-source
+          docker run --rm --entrypoint cat ghcr.io/toastedcoffee/bottlevault-egress:latest \
+            /lib/apk/db/installed > egress-source/installed
+          BASE=$(sed -n 's/^FROM //p' egress/Dockerfile)
+          docker run --rm -v "$PWD/egress:/egress:ro" -v "$PWD/egress-source:/w" "$BASE" \
+            sh /egress/source-bundle.sh /w/installed /w/bundle
+          docker build -f - egress-source/bundle <<'EOF'
+          FROM scratch
+          COPY . /source/
+          EOF

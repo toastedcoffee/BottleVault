@@ -10,6 +10,9 @@
 # Expects these images to exist locally already:
 #   ghcr.io/toastedcoffee/bottlevault-api:latest
 #   ghcr.io/toastedcoffee/bottlevault-web:latest
+#   ghcr.io/toastedcoffee/bottlevault-egress:latest
+# Some proxy checks reach the four allowed third-party hosts, so it needs
+# internet access.
 set -uo pipefail   # no -e: every check reports, the summary decides
 # Git Bash on Windows would otherwise rewrite container paths such as
 # /etc/nginx/... into C:/Program Files/Git/etc/nginx/... . Harmless on Linux.
@@ -76,6 +79,9 @@ wait_healthy() { # CONTAINER SECONDS
 check "postgres healthy" wait_healthy bottlevault-db 120
 check "backend healthy" wait_healthy bottlevault-api 300
 check "frontend healthy (nginx as 568 on port 80)" wait_healthy bottlevault-web 60
+# The egress healthcheck also fails if the TLS check silently switched itself off
+# (see egress/healthcheck.sh), so "healthy" here means the SNI check is live.
+check "egress healthy (TLS check live)" wait_healthy bottlevault-egress 90
 
 uid_is() { [ "$(docker exec "$1" id -u 2>/dev/null)" = "$2" ]; }
 check "api runs as 568" uid_is bottlevault-api 568
@@ -146,6 +152,63 @@ check "egress proxy uses the public resolvers" egress_dns_public
 # live PTR record here, so check the delivered config.
 no_reverse_lookup() { docker exec bottlevault-egress grep -Eq '^acl allowed_hosts dstdomain -n ' /etc/squid/squid.conf; }
 check "proxy allowlist never reverse-resolves IP destinations" no_reverse_lookup
+
+# TLS name check. Several allowed names are served by Cloudflare, whose addresses
+# serve every Cloudflare-hosted site and pick the site by the TLS SNI. So a tunnel
+# opened to an allowed name must also carry that name as its SNI, or the proxy has
+# to end it. Each refusal is asserted twice: the client's TLS handshake fails (curl
+# exit 35), and the proxy logged a `terminate` for exactly that SNI, which proves
+# the refusal came from the check rather than from a network failure.
+egress_logs() { docker logs bottlevault-egress 2>/dev/null; }
+logged_terminate() { # CONNECT_HOST SNI ("-" = none)
+  local logs pat
+  logs=$(egress_logs)
+  pat="CONNECT ${1//./\\.}:443 3129 terminate ${2//./\\.} "
+  grep -Eq "$pat" <<<"$logs"
+}
+curl_rc() { docker run --rm --network "${PROJECT}_proxy" "$CURL" -s -o /dev/null --max-time 20 -x http://egress:3128 "$@" >/dev/null 2>&1; echo $?; }
+sni_refused() { # CONNECT_HOST SNI_HOST
+  [ "$(curl_rc --connect-to "$2:443:$1:443" "https://$2/")" = 35 ] && logged_terminate "$1" "$2"
+}
+check "proxy refuses an allowed name with a foreign SNI (challenges.cloudflare.com / www.npmjs.com)" sni_refused challenges.cloudflare.com www.npmjs.com
+check "proxy refuses an allowed name with a foreign SNI (api.barcodelookup.com / discord.com)" sni_refused api.barcodelookup.com discord.com
+check "proxy refuses an SNI naming a different allowed host" sni_refused challenges.cloudflare.com api.barcodelookup.com
+# curl sends no SNI when the URL host is an IP address; --connect-to still makes
+# it CONNECT to the allowed name (104.18.95.41 is one of that name's addresses,
+# but the address is never contacted when the check works).
+no_sni_refused() {
+  [ "$(curl_rc -k --connect-to 104.18.95.41:443:challenges.cloudflare.com:443 https://104.18.95.41/)" = 35 ] \
+    && logged_terminate challenges.cloudflare.com -
+}
+check "proxy refuses a ClientHello without SNI" no_sni_refused
+# Each allowed host still works end to end: real TLS, a verified certificate, and
+# an HTTP answer of any status from the service itself. Third-party sites, so retry.
+tls_ok() {
+  local i out
+  for i in 1 2 3; do
+    out=$(docker run --rm --network "${PROJECT}_proxy" "$CURL" -s -o /dev/null --max-time 20 -x http://egress:3128 -w '%{ssl_verify_result} %{http_code}' "$1" 2>/dev/null) \
+      && [[ "$out" == "0 "[1-5]* ]] && return 0
+    sleep 5
+  done
+  return 1
+}
+for u in https://challenges.cloudflare.com/turnstile/v0/siteverify \
+         "https://api.upcitemdb.com/prod/trial/lookup?upc=012000161155" \
+         https://world.openfoodfacts.org/api/v2/product/3017620422003.json \
+         https://api.barcodelookup.com/v3/products; do
+  h=${u#https://}; h=${h%%/*}
+  check "proxy reaches $h with verified TLS" tls_ok "$u"
+done
+# The delivered config only ever peeks, splices or terminates: never decrypts.
+bump_free_config() {
+  local conf
+  conf=$(docker exec bottlevault-egress cat /etc/squid/squid.conf) || return 1
+  grep -Eq '^ssl_bump peek step1$' <<<"$conf" \
+    && grep -Eq '^ssl_bump splice allowed_sni sni_matches$' <<<"$conf" \
+    && grep -Eq '^ssl_bump terminate all$' <<<"$conf" \
+    && not grep -Eq '^ssl_bump +(bump|stare|client-first|server-first)' <<<"$conf"
+}
+check "proxy config peeks and splices only, never bumps" bump_free_config
 
 edge_head() { docker run --rm --network "${PROJECT}_edge" "$CURL" -s -I --max-time 10 "http://frontend$1"; }
 header_has() {

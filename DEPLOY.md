@@ -146,6 +146,21 @@ exact versions those report, and bump them deliberately. Postgres **minor**
 upgrades (16.x → 16.y) need no dump/restore; **major** upgrades do — see the
 classification table above.
 
+Pin `EGRESS_IMAGE` the same way. It is BottleVault's own egress proxy image,
+published by CI with every `main` build under that build's commit SHA. Pin the
+tag and its digest together:
+
+```bash
+docker buildx imagetools inspect ghcr.io/toastedcoffee/bottlevault-egress:<commit-sha>
+# EGRESS_IMAGE=ghcr.io/toastedcoffee/bottlevault-egress:<commit-sha>@sha256:<digest>
+```
+
+The image contains Squid and other GPL-licensed Alpine packages. Their complete
+corresponding source, with each package's build recipe and licence text, is
+published beside every egress tag as `<tag>-source` (for example
+`ghcr.io/toastedcoffee/bottlevault-egress:<commit-sha>-source`).
+`/usr/share/doc/bottlevault/SOURCE` inside the image says how to copy it out.
+
 ---
 
 ## 2. Where your data lives (why safe updates are safe)
@@ -372,7 +387,7 @@ migration has since run — restore the matching data snapshot too.
 | API container | `bottlevault-api` (`ghcr.io/toastedcoffee/bottlevault-api:latest`), runs as uid:gid `568:568` |
 | Web container | `bottlevault-web` (`ghcr.io/toastedcoffee/bottlevault-web:latest`), runs as uid:gid `568:568` |
 | Tunnel container | `bottlevault-tunnel` |
-| Egress proxy container | `bottlevault-egress` (Squid; the API's only outbound path, refusals logged as `TCP_DENIED` in `docker logs`) |
+| Egress proxy container | `bottlevault-egress` (`ghcr.io/toastedcoffee/bottlevault-egress`, Squid, runs as uid:gid `31:31`; the API's only outbound path). `healthy` in `docker ps` means its TLS name check is live, and the API waits for it. In `docker logs`, each tunnel is two lines: the API's request on port `3128`, then the TLS check on `3129`, which ends `splice <host>` (allowed) or `terminate <name>` (refused: the TLS server name was missing, `-`, or not the host the tunnel asked for). A host off the allowlist is refused as `TCP_DENIED` |
 | DB data (host) | `<stack>/data/postgres` |
 | Uploads (host) | `<stack>/data/uploads` (`UPLOADS_PATH`), owned by uid 568 |
 | Uploads (container) | `/data/uploads` (was `/app/uploads` before §7c) |
@@ -1058,7 +1073,7 @@ Two things decide whether the stack comes back:
 5. **Paste the new compose file** and add the new variables in Dockge: at least
    `IP_HASH_KEY` (generate it like `JWT_SECRET`), plus whatever the header lists
    that you use (`REGISTRATION_MODE`, the `TURNSTILE_*` keys, `PRIVACY_URL`, the
-   image pins). Behind a tunnel, delete the frontend's `ports:` block and `lan`
+   image pins, including `EGRESS_IMAGE` as in "Pin your images in production", §1). Behind a tunnel, delete the frontend's `ports:` block and `lan`
    from its `networks:`; the comment above them says why.
 6. **If you run the host guard (§9), switch its allowed-DNS list now.** The new
    `egress` and `tunnel` services resolve internet names through `BV_DNS_1` /
@@ -1077,8 +1092,8 @@ Two things decide whether the stack comes back:
    stack is up, rather than waiting up to a minute for cron to pick up the new
    networks (§9.7).
 8. **Verify**:
-   - every container is running and `bottlevault-db`, `-api` and `-web` show
-     healthy (`docker ps`);
+   - every container is running and `bottlevault-db`, `-api`, `-web` and
+     `-egress` show healthy (`docker ps`);
    - `docker exec bottlevault-api id -u` and `docker exec bottlevault-web id -u`
      both print `568`;
    - an existing bottle photo still loads, and a new upload appears in the
@@ -1090,8 +1105,10 @@ Two things decide whether the stack comes back:
      Healthy in the Zero Trust dashboard (cloudflared resolved Cloudflare's edge
      through the allowed resolvers);
    - scanning a barcode that is not in your catalog reaches a provider:
-     `docker logs bottlevault-egress` shows a `TCP_TUNNEL/200` line for it. A
-     `TCP_DENIED` line means a request went somewhere off the allowlist.
+     `docker logs bottlevault-egress` shows a `TCP_TUNNEL/200` line for it and
+     a `3129 splice <provider host>` line. A `TCP_DENIED` line means a request
+     went somewhere off the allowlist, and `terminate` means a tunnel's TLS
+     server name did not match its allowed host.
 9. **Rollback**: restore the saved compose (with the pinned pre-hardening image
    tags from step 2) and environment in Dockge; if you run the host guard, set
    `BV_ALLOWED_DNS` back to the router and `./guard.sh apply`; deploy. If the

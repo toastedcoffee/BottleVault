@@ -48,7 +48,9 @@
 #   BV_DNS_1, BV_DNS_2   — resolvers for the egress proxy and the tunnel (defaults
 #                          1.1.1.1 and 9.9.9.9). If you run the host guard, its
 #                          allowed-DNS list must name the same two (DEPLOY.md §9).
-#   POSTGRES_IMAGE, CLOUDFLARED_IMAGE, EGRESS_IMAGE — pin these in production; see DEPLOY.md
+#   POSTGRES_IMAGE, CLOUDFLARED_IMAGE, EGRESS_IMAGE — pin these in production; see DEPLOY.md.
+#                          EGRESS_IMAGE is BottleVault's own egress proxy image
+#                          (ghcr.io/toastedcoffee/bottlevault-egress): pin it by digest
 
 x-logging: &logging
   driver: json-file
@@ -166,7 +168,7 @@ services:
       postgres:
         condition: service_healthy
       egress:
-        condition: service_started
+        condition: service_healthy
     # Internal only — frontend (nginx) reaches it at http://backend:8080, nothing external
     expose:
       - "8080"
@@ -273,15 +275,22 @@ services:
 
   # Outbound HTTPS proxy — the API's only route off this host. It allows CONNECT
   # to port 443 on the hosts in the config below and nothing else: no private
-  # addresses, no plain HTTP. Refusals show up in `docker logs bottlevault-egress`
-  # as TCP_DENIED. Adding a host is a deliberate change to this file.
+  # addresses, no plain HTTP, and the tunnel's TLS server name (SNI) must be the
+  # same allowed host. Refusals show up in `docker logs bottlevault-egress` as
+  # TCP_DENIED (not on the list) or `terminate <name>` (TLS name refused).
+  # Adding a host is a deliberate change to this file.
   egress:
-    image: ${EGRESS_IMAGE:-ubuntu/squid:latest}
+    # Squid built with OpenSSL, which the TLS name check needs (egress/Dockerfile).
+    # Pin it by digest in production, like the other images (DEPLOY.md). It must
+    # be this image or one built from egress/Dockerfile: the entrypoint, the SNI
+    # helper and the healthcheck below live in it. A plain Squid image (such as
+    # an older `ubuntu/squid` pin) does not start, and the API waits for it.
+    image: ${EGRESS_IMAGE:-ghcr.io/toastedcoffee/bottlevault-egress:latest}
     container_name: bottlevault-egress
-    # The image's unprivileged "proxy" user. If you swap EGRESS_IMAGE, use that
-    # image's unprivileged uid:gid instead.
-    user: "13:13"
-    entrypoint: ["squid", "-N", "-f", "/etc/squid/squid.conf"]
+    # The image's unprivileged "squid" user.
+    user: "31:31"
+    # Makes the throwaway certificate the TLS check needs, then starts Squid.
+    entrypoint: ["/usr/local/bin/egress-start"]
     # Not read_only: Compose injects an inline config by copying it into the
     # container, which it refuses to do on a read-only root filesystem. The proxy
     # still runs as an unprivileged user with no capabilities, so the system
@@ -304,6 +313,14 @@ services:
       - ${BV_DNS_2:-9.9.9.9}
     expose:
       - "3128"
+    # Healthy means the TLS name check is live: the probe fails if Squid quietly
+    # started without it. The API waits for this. No probe leaves the container.
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/egress-healthcheck"]
+      interval: 10s
+      timeout: 8s
+      retries: 3
+      start_period: 30s
     networks: [proxy, egress_out]
     restart: unless-stopped
 
@@ -334,23 +351,36 @@ networks:
   lan:
     enable_ipv6: false
 
+# Keep identical to the squid_conf block in docker-compose.yml.
 configs:
   squid_conf:
     content: |
-      http_port 3128
+      # Port 3128 is what the API talks to: a plain forward-proxy port, so a refused
+      # request gets a plain 403. Every CONNECT it allows goes on to port 3129.
+      http_port 3128 name=front
+      # Port 3129, loopback only, is the TLS name check: it reads the TLS ClientHello
+      # of each tunnel without decrypting anything, then passes the tunnel through
+      # untouched ("splice") or closes it ("terminate"). It is a separate port because
+      # Squid answers a refused CONNECT on a TLS-check port by showing its error page
+      # inside TLS, with its own certificate, instead of a plain 403. The certificate
+      # is a throwaway made at each start (egress/start.sh) and is never presented to
+      # a tunnel that passes the check.
+      http_port 127.0.0.1:3129 name=tls_check ssl-bump tls-cert=/tmp/tls/splice.pem tls-key=/tmp/tls/splice.key generate-host-certificates=off
       pid_filename /tmp/squid.pid
       coredump_dir /tmp
       cache deny all
       cache_mem 8 MB
-      access_log stdio:/dev/stdout
+      # Squid sizes its tables to the container's open-file limit (often 1048576),
+      # which alone takes most of the memory limit. 4096 is far above this proxy's need.
+      max_filedescriptors 4096
       cache_log /dev/stderr
       logfile_rotate 0
       shutdown_lifetime 1 second
       forwarded_for delete
       via off
-      # The ICMP helper needs a raw socket, i.e. a capability this container
-      # does not have; without this line it logs a FATAL at every start.
-      pinger_enable off
+      # Each tunnel logs two lines: port 3128 (the API's request) and port 3129 (the
+      # TLS check: "splice <SNI>" passed, "terminate <SNI>" refused, "-" = no SNI).
+      logformat bv %ts.%03tu %6tr %>a %Ss/%03>Hs %<st %rm %ru %>lp %ssl::bump_mode %ssl::>sni %Sh/%<a
 
       # -n: never reverse-resolve an IP-address destination. Without it, a CONNECT
       # to a bare IP whose PTR record names an allowed host would be let through,
@@ -359,9 +389,39 @@ configs:
       acl https_port port 443
       acl CONNECT method CONNECT
       acl private_dst dst 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4 ::1 fc00::/7 fe80::/10
+      acl from_front myportname front
+      # The healthcheck (egress/healthcheck.sh) runs inside this container and probes
+      # these two targets. Neither resolves or routes anywhere, and only its own
+      # probes are left out of the access log.
+      acl localhost_src src 127.0.0.1/32
+      acl selftest_name dstdomain egress-selftest.invalid
+      acl selftest_ip dst 192.0.2.1
+      acl selftest_probe all-of localhost_src selftest_name
+      acl selftest_ip_probe all-of localhost_src selftest_ip
+      access_log stdio:/dev/stdout bv !selftest_probe !selftest_ip_probe
 
       http_access deny !CONNECT
       http_access deny !https_port
+      http_access allow CONNECT selftest_name localhost_src
       http_access deny private_dst
       http_access allow CONNECT allowed_hosts
       http_access deny all
+
+      # Everything allowed on 3128 leaves through the TLS check on 3129, which goes
+      # direct. (The egress healthcheck keeps this internal hop marked up.)
+      cache_peer 127.0.0.1 parent 3129 0 no-query no-digest no-netdb-exchange name=tls_check
+      cache_peer_access tls_check allow from_front
+      cache_peer_access tls_check deny all
+      never_direct allow from_front
+
+      # The TLS name check. A tunnel passes only if its SNI is on the allowlist AND is
+      # the very name its CONNECT line asked for; anything else, including a
+      # ClientHello with no SNI or bytes that are not TLS, is closed. Nothing is ever
+      # decrypted: there is no "bump" rule, and there must never be one.
+      acl step1 at_step SslBump1
+      acl allowed_sni ssl::server_name --client-requested challenges.cloudflare.com api.upcitemdb.com world.openfoodfacts.org api.barcodelookup.com
+      external_acl_type sni_is_connect_host ttl=0 negative_ttl=0 children-max=4 children-startup=1 children-idle=1 %ssl::>sni %>rd /usr/local/bin/sni-check
+      acl sni_matches external sni_is_connect_host
+      ssl_bump peek step1
+      ssl_bump splice allowed_sni sni_matches
+      ssl_bump terminate all
