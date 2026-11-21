@@ -145,6 +145,26 @@ function axiosError(status: number, data: unknown = {}): AxiosError {
   return new AxiosError(`Request failed with status code ${status}`, 'ERR_BAD_REQUEST', config, null, response);
 }
 
+describe('AddBottlePage type list', () => {
+  it('offers Wine, Cider and Mead for a new product', async () => {
+    await startNewProductWithNewBrand();
+    expect(screen.getByRole('option', { name: 'WINE' })).toHaveValue('WINE');
+    expect(screen.getByRole('option', { name: 'CIDER' })).toHaveValue('CIDER');
+    expect(screen.getByRole('option', { name: 'MEAD' })).toHaveValue('MEAD');
+  });
+
+  it('creates a product with the chosen new type', async () => {
+    await startNewProductWithNewBrand();
+    fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: 'Dry Hopped' } });
+    fireEvent.change(screen.getByRole('option', { name: 'CIDER' }).closest('select')!, {
+      target: { value: 'CIDER' },
+    });
+    submit();
+    await waitFor(() => expect(createProduct.mutateAsync).toHaveBeenCalled());
+    expect(createProduct.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ type: 'CIDER' }));
+  });
+});
+
 describe('AddBottlePage error messages', () => {
   it("shows the server's reason when the bottle is refused", async () => {
     await startNewProductWithNewBrand();

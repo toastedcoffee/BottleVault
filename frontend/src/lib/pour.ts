@@ -37,12 +37,19 @@ export function percentAfterPour(currentPercent: number, sizeMl: number, pourOz:
 }
 
 const BEER_TYPES: ReadonlySet<AlcoholType> = new Set([
-  'BEER', 'IPA', 'STOUT', 'LAGER', 'PILSNER', 'WHEAT_BEER',
+  'BEER', 'IPA', 'STOUT', 'LAGER', 'PILSNER', 'WHEAT_BEER', 'CIDER',
 ]);
 
-/** Standard serving for the product type: 5 oz for wine, 12 oz for beer, 1.5 oz otherwise. */
+// Cider is poured like beer; mead is a wine-strength drink poured in a wine glass.
+const GLASS_OF_WINE_TYPES: ReadonlySet<AlcoholType> = new Set(['MEAD']);
+
+/**
+ * Standard serving for the product type: 5 oz for wine and mead, 12 oz for beer
+ * and cider, 1.5 oz otherwise. Every WINE* type is a wine glass, which also
+ * covers the generic WINE.
+ */
 export function defaultPourOz(type: AlcoholType): number {
-  if (type.startsWith('WINE')) return 5;
+  if (type.startsWith('WINE') || GLASS_OF_WINE_TYPES.has(type)) return 5;
   if (BEER_TYPES.has(type)) return 12;
   return 1.5;
 }
