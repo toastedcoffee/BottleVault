@@ -22,9 +22,14 @@
 set -u
 db=$1 out=$2
 [ -r "$db" ] || { echo "cannot read $db" >&2; exit 2; }
-apk add --no-cache -q abuild curl >/dev/null || { echo "apk add abuild curl failed" >&2; exit 2; }
+apk add --no-cache -q abuild curl git >/dev/null || { echo "apk add abuild curl git failed" >&2; exit 2; }
 mkdir -p "$out/aports" "$out/distfiles"
-aports=https://gitlab.alpinelinux.org/alpine/aports/-/archive
+# Alpine's aports repository, read with git by commit hash, so the recipe is
+# exactly the one the package was built from (git verifies it by that hash).
+# Tried in order: Alpine's official mirror on GitHub, then Alpine's own GitLab.
+# (GitLab's per-directory archive download refused every request from a CI
+# runner once; plain git from either host does not depend on that endpoint.)
+remotes="https://github.com/alpinelinux/aports https://gitlab.alpinelinux.org/alpine/aports.git"
 # abuild tries Alpine's mirror of every source it has built before the upstream
 # URL. Use the branch of the base this runs in, which is the image's own base.
 branch=v$(cut -d. -f1,2 /etc/alpine-release)
@@ -59,20 +64,34 @@ for oc in $(tail -n +2 "$out/PACKAGES.tsv" | awk -F'\t' '{ print $3 "@" $4 }' | 
   if [ -z "$origin" ] || [ -z "$commit" ]; then
     echo "FAIL $oc: package record has no origin or aports commit" >&2; failed=1; continue
   fi
-  found=
+  found= fetched=
+  for remote in $remotes; do
+    for attempt in 1 2; do
+      # Only this commit, without file contents; checkout then fetches just
+      # the files of the two directories. Any step failing is reported.
+      if rm -rf "$tmp/g" && git init -q "$tmp/g" 2>"$tmp/err" &&
+         git -C "$tmp/g" sparse-checkout set --no-cone "main/$origin" "community/$origin" 2>"$tmp/err" &&
+         git -C "$tmp/g" fetch -q --depth 1 --filter=blob:none "$remote" "$commit" 2>"$tmp/err" &&
+         git -C "$tmp/g" checkout -q FETCH_HEAD 2>"$tmp/err"; then
+        fetched=$remote; break 2
+      fi
+      echo "  $origin: $remote (attempt $attempt): $(tail -n 1 "$tmp/err")" >&2
+      [ "$attempt" = 2 ] || sleep 3
+    done
+  done
+  if [ -z "$fetched" ]; then
+    echo "FAIL $origin: aports commit $commit could not be fetched from any source" >&2; failed=1; continue
+  fi
   for repo in main community; do
-    rm -rf "$tmp"/*
-    if curl -fsSL --retry 3 -o "$tmp/a.tgz" "$aports/$commit/aports-$commit.tar.gz?path=$repo/$origin" 2>/dev/null &&
-       tar -xzf "$tmp/a.tgz" -C "$tmp" 2>/dev/null &&
-       [ -f "$tmp/aports-$commit-$repo-$origin/$repo/$origin/APKBUILD" ]; then
+    if [ -f "$tmp/g/$repo/$origin/APKBUILD" ]; then
       mkdir -p "$out/aports/$repo"
       rm -rf "$out/aports/$repo/$origin"
-      mv "$tmp/aports-$commit-$repo-$origin/$repo/$origin" "$out/aports/$repo/$origin"
+      mv "$tmp/g/$repo/$origin" "$out/aports/$repo/$origin"
       found=$repo; break
     fi
   done
   if [ -z "$found" ]; then
-    echo "FAIL $origin: no APKBUILD at aports commit $commit (main or community)" >&2; failed=1; continue
+    echo "FAIL $origin: aports commit $commit has no main/$origin or community/$origin" >&2; failed=1; continue
   fi
   # abuild links each source into a src/ work directory with absolute symlinks;
   # those are not source (the files are in distfiles/) and an image build refuses
