@@ -25,8 +25,11 @@ db=$1 out=$2
 apk add --no-cache -q abuild curl >/dev/null || { echo "apk add abuild curl failed" >&2; exit 2; }
 mkdir -p "$out/aports" "$out/distfiles"
 aports=https://gitlab.alpinelinux.org/alpine/aports/-/archive
-# abuild tries this mirror of every source Alpine has built before the upstream URL.
-export DISTFILES_MIRROR=https://distfiles.alpinelinux.org/distfiles/v3.24
+# abuild tries Alpine's mirror of every source it has built before the upstream
+# URL. Use the branch of the base this runs in, which is the image's own base.
+branch=v$(cut -d. -f1,2 /etc/alpine-release)
+export DISTFILES_MIRROR=https://distfiles.alpinelinux.org/distfiles/$branch
+echo "distfiles mirror: $DISTFILES_MIRROR"
 export SRCDEST=$out/distfiles
 
 # One record per package: name, version, origin, aports commit, licence.
@@ -40,7 +43,8 @@ awk -F: '
 
 # The bundle keeps one recipe per origin, so an origin whose packages came from
 # two different aports commits (a partial upgrade) cannot be represented: stop.
-split=$(tail -n +2 "$out/PACKAGES.tsv" | awk -F'\t' '{ print $3 "\t" $4 }' | sort -u |
+# (A record with no commit at all is reported by the loop below instead.)
+split=$(tail -n +2 "$out/PACKAGES.tsv" | awk -F'\t' '$4 != "" { print $3 "\t" $4 }' | sort -u |
   awk -F'\t' '{ n[$1]++ } END { for (o in n) if (n[o] > 1) print o }')
 if [ -n "$split" ]; then
   for o in $split; do echo "FAIL $o: its packages come from more than one aports commit" >&2; done
