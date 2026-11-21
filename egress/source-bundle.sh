@@ -38,6 +38,15 @@ awk -F: '
   END   { if (p != "") printf "%s\t%s\t%s\t%s\t%s\n", p, v, o, c, l }
 ' "$db" >> "$out/PACKAGES.tsv"
 
+# The bundle keeps one recipe per origin, so an origin whose packages came from
+# two different aports commits (a partial upgrade) cannot be represented: stop.
+split=$(tail -n +2 "$out/PACKAGES.tsv" | awk -F'\t' '{ print $3 "\t" $4 }' | sort -u |
+  awk -F'\t' '{ n[$1]++ } END { for (o in n) if (n[o] > 1) print o }')
+if [ -n "$split" ]; then
+  for o in $split; do echo "FAIL $o: its packages come from more than one aports commit" >&2; done
+  exit 1
+fi
+
 failed=0
 tmp=$(mktemp -d)
 # Each origin once, at the commit its packages were built from.
@@ -76,4 +85,7 @@ for oc in $(tail -n +2 "$out/PACKAGES.tsv" | awk -F'\t' '{ print $3 "@" $4 }' | 
   fi
 done
 rm -rf "$tmp"
+# One fixed timestamp on everything, so the same package set always gives the
+# same image layer: the registry then stores it once, not once per build.
+find "$out" -exec touch -d '1970-01-01 00:00:00' {} + || failed=1
 exit $failed

@@ -87,11 +87,12 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            # Validate against Docker's tag charset: ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$
+            # Docker tag charset, capped at 121 characters so the "-source" tag
+            # CI derives for the egress image stays within Docker's 128-character limit.
             # Catches empty input (required:true only checks presence), shell
             # metacharacters, and anything Docker would later reject.
-            if ! printf '%s' "$INPUT_TAG" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$'; then
-              echo "::error::Invalid tag input. Must match ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$"
+            if ! printf '%s' "$INPUT_TAG" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,120}$'; then
+              echo "::error::Invalid tag input. Must match ^[A-Za-z0-9_][A-Za-z0-9._-]{0,120}$"
               exit 1
             fi
             TAG="$INPUT_TAG"
@@ -128,11 +129,49 @@ jobs:
             .
           docker push "ghcr.io/toastedcoffee/bottlevault-web:$TAG"
           docker push "ghcr.io/toastedcoffee/bottlevault-web:$SHA"
+      # Report-only for now (exit-code 0): a base-image CVE with no fix must not
+      # block a deploy. Findings land in the repository's Security tab. The images
+      # are already pushed by this point, so a scanner outage (e.g. the vulnerability
+      # database download being rate-limited) must not turn the job red either:
+      # every scan and upload step is continue-on-error.
+      - name: Scan the API image
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/toastedcoffee/bottlevault-api:${{ github.sha }}
+          format: sarif
+          output: trivy-api.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+      - name: Scan the web image
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/toastedcoffee/bottlevault-web:${{ github.sha }}
+          format: sarif
+          output: trivy-web.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+      - name: Upload the API scan
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: trivy-api.sarif
+          category: trivy-api
+      - name: Upload the web scan
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: trivy-web.sarif
+          category: trivy-web
       # The egress image is Alpine's Squid (GPL-2.0-or-later) and other GPL/LGPL
       # packages, so publishing it means publishing their complete corresponding
       # source from the same place: the same registry and tags, plus "-source".
       # The source is collected and pushed first; if that fails, the image itself
-      # is never pushed.
+      # is never pushed. These steps come after the api and web scans so that a
+      # failure here cannot skip those.
       - name: Build the egress image and collect its source
         env:
           SHA: ${{ github.sha }}
@@ -163,31 +202,6 @@ jobs:
           docker push "$IMG:$SHA-source"
           docker push "$IMG:$TAG"
           docker push "$IMG:$SHA"
-      # Report-only for now (exit-code 0): a base-image CVE with no fix must not
-      # block a deploy. Findings land in the repository's Security tab. The images
-      # are already pushed by this point, so a scanner outage (e.g. the vulnerability
-      # database download being rate-limited) must not turn the job red either:
-      # every scan and upload step is continue-on-error.
-      - name: Scan the API image
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ghcr.io/toastedcoffee/bottlevault-api:${{ github.sha }}
-          format: sarif
-          output: trivy-api.sarif
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: '0'
-      - name: Scan the web image
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ghcr.io/toastedcoffee/bottlevault-web:${{ github.sha }}
-          format: sarif
-          output: trivy-web.sarif
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: '0'
       - name: Scan the egress image
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -198,18 +212,6 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '0'
-      - name: Upload the API scan
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
-        with:
-          sarif_file: trivy-api.sarif
-          category: trivy-api
-      - name: Upload the web scan
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
-        with:
-          sarif_file: trivy-web.sarif
-          category: trivy-web
       - name: Upload the egress scan
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3

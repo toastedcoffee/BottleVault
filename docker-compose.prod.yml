@@ -281,7 +281,10 @@ services:
   # Adding a host is a deliberate change to this file.
   egress:
     # Squid built with OpenSSL, which the TLS name check needs (egress/Dockerfile).
-    # Pin it by digest in production, like the other images (DEPLOY.md).
+    # Pin it by digest in production, like the other images (DEPLOY.md). It must
+    # be this image or one built from egress/Dockerfile: the entrypoint, the SNI
+    # helper and the healthcheck below live in it. A plain Squid image (such as
+    # an older `ubuntu/squid` pin) does not start, and the API waits for it.
     image: ${EGRESS_IMAGE:-ghcr.io/toastedcoffee/bottlevault-egress:latest}
     container_name: bottlevault-egress
     # The image's unprivileged "squid" user.

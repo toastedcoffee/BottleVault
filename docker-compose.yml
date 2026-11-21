@@ -139,12 +139,11 @@ services:
 
   # The API's egress proxy; docker-compose.prod.yml describes it.
   egress:
-    # Built from source here like the other two images; EGRESS_IMAGE names the
-    # tag (or a published image to use instead of building).
+    # Built from source here, like the other two images. (EGRESS_IMAGE applies
+    # to docker-compose.prod.yml only: a build cannot be tagged with a digest.)
     build:
       context: .
       dockerfile: egress/Dockerfile
-    image: ${EGRESS_IMAGE:-ghcr.io/toastedcoffee/bottlevault-egress:latest}
     container_name: bottlevault-egress
     user: "31:31"
     entrypoint: ["/usr/local/bin/egress-start"]
