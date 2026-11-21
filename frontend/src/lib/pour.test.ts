@@ -58,6 +58,15 @@ describe('defaultPourOz', () => {
     expect(defaultPourOz('WINE_SPARKLING')).toBe(5);
   });
 
+  it('defaults generic wine and mead to a 5 oz glass', () => {
+    expect(defaultPourOz('WINE')).toBe(5);
+    expect(defaultPourOz('MEAD')).toBe(5);
+  });
+
+  it('defaults cider to a 12 oz serving', () => {
+    expect(defaultPourOz('CIDER')).toBe(12);
+  });
+
   it('defaults beer styles to a 12 oz serving', () => {
     expect(defaultPourOz('IPA')).toBe(12);
     expect(defaultPourOz('BEER')).toBe(12);

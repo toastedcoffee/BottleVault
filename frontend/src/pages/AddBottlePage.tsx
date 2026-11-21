@@ -24,10 +24,10 @@ const BarcodeScanner = lazy(() => import('../components/barcode/BarcodeScanner')
 
 const ALCOHOL_TYPES: AlcoholType[] = [
   'WHISKEY', 'BOURBON', 'SCOTCH', 'RYE', 'VODKA', 'GIN', 'RUM',
-  'TEQUILA', 'BRANDY', 'COGNAC', 'WINE_RED', 'WINE_WHITE', 'WINE_ROSE',
-  'WINE_SPARKLING', 'WINE_DESSERT', 'BEER', 'IPA', 'STOUT', 'LAGER',
-  'PILSNER', 'WHEAT_BEER', 'LIQUEUR', 'AMARO', 'VERMOUTH', 'ABSINTHE',
-  'MEZCAL', 'SAKE', 'OTHER',
+  'TEQUILA', 'BRANDY', 'COGNAC', 'WINE', 'WINE_RED', 'WINE_WHITE',
+  'WINE_ROSE', 'WINE_SPARKLING', 'WINE_DESSERT', 'BEER', 'IPA', 'STOUT',
+  'LAGER', 'PILSNER', 'WHEAT_BEER', 'CIDER', 'MEAD', 'LIQUEUR', 'AMARO',
+  'VERMOUTH', 'ABSINTHE', 'MEZCAL', 'SAKE', 'OTHER',
 ];
 
 /**
