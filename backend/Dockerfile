@@ -9,7 +9,7 @@ RUN gradle dependencies --no-daemon || true
 COPY backend/src ./src
 RUN gradle bootJar --no-daemon
 
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:24-jre-alpine
 LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 LABEL org.opencontainers.image.source="https://github.com/toastedcoffee/BottleVault"
 LABEL org.opencontainers.image.title="BottleVault"
