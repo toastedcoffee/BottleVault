@@ -66,16 +66,18 @@ for oc in $(tail -n +2 "$out/PACKAGES.tsv" | awk -F'\t' '{ print $3 "@" $4 }' | 
   fi
   found= fetched=
   for remote in $remotes; do
-    rm -rf "$tmp/g"
-    git init -q "$tmp/g" &&
-      git -C "$tmp/g" sparse-checkout set --no-cone "main/$origin" "community/$origin" 2>/dev/null
-    # Only this commit, without file contents; checkout then fetches just the
-    # files of the two directories above.
-    if git -C "$tmp/g" fetch -q --depth 1 --filter=blob:none "$remote" "$commit" 2>"$tmp/err" &&
-       git -C "$tmp/g" checkout -q FETCH_HEAD 2>"$tmp/err"; then
-      fetched=$remote; break
-    fi
-    echo "  $origin: $remote: $(tail -n 1 "$tmp/err")" >&2
+    for attempt in 1 2; do
+      # Only this commit, without file contents; checkout then fetches just
+      # the files of the two directories. Any step failing is reported.
+      if rm -rf "$tmp/g" && git init -q "$tmp/g" 2>"$tmp/err" &&
+         git -C "$tmp/g" sparse-checkout set --no-cone "main/$origin" "community/$origin" 2>"$tmp/err" &&
+         git -C "$tmp/g" fetch -q --depth 1 --filter=blob:none "$remote" "$commit" 2>"$tmp/err" &&
+         git -C "$tmp/g" checkout -q FETCH_HEAD 2>"$tmp/err"; then
+        fetched=$remote; break 2
+      fi
+      echo "  $origin: $remote (attempt $attempt): $(tail -n 1 "$tmp/err")" >&2
+      [ "$attempt" = 2 ] || sleep 3
+    done
   done
   if [ -z "$fetched" ]; then
     echo "FAIL $origin: aports commit $commit could not be fetched from any source" >&2; failed=1; continue
