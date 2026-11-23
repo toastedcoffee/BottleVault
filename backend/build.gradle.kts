@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-FileCopyrightText: 2025-2026 toastedcoffee
 plugins {
-    id("org.springframework.boot") version "4.1.2"
+    id("org.springframework.boot") version "4.2.0"
     id("io.spring.dependency-management") version "1.1.7"
     kotlin("jvm") version "2.4.21"
     kotlin("plugin.spring") version "2.4.21"
@@ -32,7 +32,7 @@ dependencies {
     implementation("com.twelvemonkeys.imageio:imageio-jpeg:3.15.3")
     implementation("com.twelvemonkeys.imageio:imageio-webp:3.15.3")
     // EXIF orientation (Apache-2.0; pulls in Adobe xmpcore, BSD-3-Clause)
-    implementation("com.drewnoakes:metadata-extractor:2.21.0")
+    implementation("com.drewnoakes:metadata-extractor:2.22.0")
     // Bounded in-memory maps for rate limiting (Apache-2.0; version from the Boot BOM)
     implementation("com.github.ben-manes.caffeine:caffeine")
 
